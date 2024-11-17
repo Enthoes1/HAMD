@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>精神科量表评估系统</title>
+    <meta charset="UTF-8">
+    <style>
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .status-panel {
+            background-color: #f5f5f5;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        .chat-panel {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 5px;
+        }
+        .user-message {
+            background-color: #e3f2fd;
+            margin-left: 20%;
+        }
+        .system-message {
+            background-color: #f5f5f5;
+            margin-right: 20%;
+        }
+        .input-panel {
+            display: flex;
+            gap: 10px;
+        }
+        #userInput {
+            flex-grow: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="status-panel">
+            <h3>评估状态</h3>
+            <p>当前条目: <span id="currentItem">-</span></p>
+            <p>进度: <span id="progress">0/0</span></p>
+        </div>
+        
+        <div class="chat-panel" id="chatPanel">
+            <!-- 对话内容将在这里动态添加 -->
+        </div>
+        
+        <div class="input-panel">
+            <input type="text" id="userInput" placeholder="请输入您的回答...">
+            <button onclick="sendMessage()">发送</button>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script>
+        let socket = io();
+        
+        socket.on('message', function(data) {
+            if (data.type === 'status') {
+                // 更新状态面板
+                document.getElementById('currentItem').textContent = data.current_item;
+                document.getElementById('progress').textContent = 
+                    `${data.current_index + 1}/${data.total_items}`;
+            } else if (data.type === 'message') {
+                // 添加新消息到对话面板
+                addMessage(data.content, data.role);
+            }
+        });
+        
+        function addMessage(content, role) {
+            const chatPanel = document.getElementById('chatPanel');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}-message`;
+            messageDiv.textContent = content;
+            chatPanel.appendChild(messageDiv);
+            chatPanel.scrollTop = chatPanel.scrollHeight;
+        }
+        
+        function sendMessage() {
+            const input = document.getElementById('userInput');
+            const message = input.value.trim();
+            
+            if (message) {
+                socket.emit('user_input', {
+                    type: 'user_input',
+                    content: message
+                });
+                
+                addMessage(message, 'user');
+                input.value = '';
+            }
+        }
+        
+        // 支持按Enter键发送消息
+        document.getElementById('userInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html> 
