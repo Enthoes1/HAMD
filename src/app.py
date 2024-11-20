@@ -5,13 +5,14 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask, render_template
-from flask_socketio import SocketIO, emit
+from flask_socketio import emit
 import asyncio
 from core.assessment_framework import AssessmentFramework
+from utils.globals import socketio, init_socketio  # 导入 socketio 实例和初始化函数
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
-socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
+init_socketio(app)  # 初始化 socketio
 
 # 配置模型参数
 model_config = {
@@ -20,8 +21,12 @@ model_config = {
     'model': 'qwen-plus'
 }
 
+# 获取项目根目录路径
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+prompt_file_path = os.path.join(root_dir, "提示词.txt")
+
 # 初始化评估框架
-framework = AssessmentFramework("提示词.txt", model_config)
+framework = AssessmentFramework(prompt_file_path, model_config)
 framework.initialize_items_from_prompts()
 
 def get_question(prompt):
@@ -70,7 +75,6 @@ def handle_connect():
 @socketio.on('user_input')
 def handle_message(data):
     try:
-        # 使用 eventlet 来处理异步操作
         def async_process():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
@@ -78,7 +82,6 @@ def handle_message(data):
             loop.close()
         
         socketio.start_background_task(async_process)
-        
     except Exception as e:
         print(f"消息处理错误: {str(e)}")
         emit('message', {
@@ -92,12 +95,12 @@ async def process_message(data):
         # 处理用户响应
         result = await framework.process_response(data['content'])
         
-        if result['status'] == 'completed':
+        if result['type'] == 'score':
             # 如果评估完成，发送评分结果并切换到下一个条目
             socketio.emit('message', {
                 'type': 'message',
                 'role': 'system',
-                'content': f"评分完成：{result['score']}"
+                'content': f"评分完成：{result['data']}"
             })
             
             # 移动到下一个项目
@@ -111,7 +114,7 @@ async def process_message(data):
                     'total_items': len(framework.items)
                 })
                 
-                # 提取并发送下一个问诊问题
+                # 直接提取并发送下一个问诊问题，而不是等待 LLM 生成
                 question = get_question(next_item.prompt)
                 socketio.emit('message', {
                     'type': 'message',
@@ -126,11 +129,11 @@ async def process_message(data):
                     'content': "评估完成！总评分结果：" + str(framework.scores)
                 })
         else:
-            # 继续对话
+            # 这是后续的对话，使用 LLM 的回复
             socketio.emit('message', {
                 'type': 'message',
-                'role': 'system',
-                'content': result['message']
+                'role': 'assistant',
+                'content': result['data']
             })
             
     except Exception as e:

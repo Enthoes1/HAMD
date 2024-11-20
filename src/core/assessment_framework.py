@@ -33,27 +33,27 @@ class AssessmentFramework:
         self.items.append(item)
         
     async def process_response(self, user_response):
-        current_item = self.items[self.current_item_index]
-        
-        # 调用LLM进行评估
-        result = await self.llm_handler.evaluate_response(
-            current_item.prompt, 
-            user_response
-        )
-        
-        # 记录对话历史
-        self.conversation_history[current_item.item_id].append({
-            'user': user_response,
-            'assistant': result['data'] if result['type'] == 'message' else None
-        })
-        
-        if result['type'] == 'score':
-            # 如果是评分结果，存储并返回True表示该条目已完成
-            self.scores[current_item.item_id] = result['data']
-            return {'status': 'completed', 'score': result['data']}
-        else:
-            # 如果是普通对话，返回False表示继续对话
-            return {'status': 'continue', 'message': result['data']}
+        try:
+            current_item = self.items[self.current_item_index]
+            history = self.conversation_history[current_item.item_id]
+            
+            result = await self.llm_handler.evaluate_response(
+                current_item.prompt, 
+                user_response,
+                history
+            )
+            
+            # 记录对话历史
+            if result['type'] == 'message':
+                self.conversation_history[current_item.item_id].append({
+                    'user': user_response,
+                    'assistant': result['data']
+                })
+            
+            return result
+        except Exception as e:
+            print(f"处理响应出错: {str(e)}")
+            raise
         
     def next_item(self):
         if self.current_item_index < len(self.items) - 1:

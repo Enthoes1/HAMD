@@ -5,16 +5,29 @@
     <meta charset="UTF-8">
     <style>
         .container {
-            max-width: 800px;
+            max-width: 1200px;  /* 增加宽度以适应新面板 */
             margin: 0 auto;
             padding: 20px;
+            display: flex;  /* 使用flex布局 */
+            gap: 20px;      /* 面板之间的间距 */
         }
+        
+        .main-panel {
+            flex: 2;        /* 主面板占更多空间 */
+        }
+        
+        .llm-panel {
+            flex: 1;        /* LLM消息面板 */
+            min-width: 300px;
+        }
+        
         .status-panel {
             background-color: #f5f5f5;
             padding: 15px;
             margin-bottom: 20px;
             border-radius: 5px;
         }
+        
         .chat-panel {
             height: 400px;
             overflow-y: auto;
@@ -23,29 +36,57 @@
             margin-bottom: 20px;
             border-radius: 5px;
         }
+        
+        .llm-messages {
+            height: 600px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        
         .message {
             margin-bottom: 10px;
             padding: 8px;
             border-radius: 5px;
         }
+        
         .user-message {
             background-color: #e3f2fd;
             margin-left: 20%;
         }
+        
         .system-message {
             background-color: #f5f5f5;
             margin-right: 20%;
         }
+        
+        .llm-message {
+            font-family: monospace;
+            white-space: pre-wrap;
+            font-size: 0.9em;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 10px;
+        }
+        
+        .llm-message .role {
+            color: #0066cc;
+            font-weight: bold;
+        }
+        
         .input-panel {
             display: flex;
             gap: 10px;
         }
+        
         #userInput {
             flex-grow: 1;
             padding: 8px;
             border: 1px solid #ddd;
             border-radius: 5px;
         }
+        
         button {
             padding: 8px 15px;
             background-color: #4CAF50;
@@ -54,6 +95,7 @@
             border-radius: 5px;
             cursor: pointer;
         }
+        
         button:hover {
             background-color: #45a049;
         }
@@ -61,19 +103,28 @@
 </head>
 <body>
     <div class="container">
-        <div class="status-panel">
-            <h3>评估状态</h3>
-            <p>当前条目: <span id="currentItem">-</span></p>
-            <p>进度: <span id="progress">0/0</span></p>
+        <div class="main-panel">
+            <div class="status-panel">
+                <h3>评估状态</h3>
+                <p>当前条目: <span id="currentItem">-</span></p>
+                <p>进度: <span id="progress">0/0</span></p>
+            </div>
+            
+            <div class="chat-panel" id="chatPanel">
+                <!-- 对话内容将在这里动态添加 -->
+            </div>
+            
+            <div class="input-panel">
+                <input type="text" id="userInput" placeholder="请输入您的回答...">
+                <button onclick="sendMessage()">发送</button>
+            </div>
         </div>
         
-        <div class="chat-panel" id="chatPanel">
-            <!-- 对话内容将在这里动态添加 -->
-        </div>
-        
-        <div class="input-panel">
-            <input type="text" id="userInput" placeholder="请输入您的回答...">
-            <button onclick="sendMessage()">发送</button>
+        <div class="llm-panel">
+            <h3>LLM 消息列表</h3>
+            <div class="llm-messages" id="llmMessages">
+                <!-- LLM消息将在这里动态添加 -->
+            </div>
         </div>
     </div>
 
@@ -90,6 +141,9 @@
             } else if (data.type === 'message') {
                 // 添加新消息到对话面板
                 addMessage(data.content, data.role);
+            } else if (data.type === 'llm_messages') {
+                // 添加LLM消息列表
+                addLLMMessages(data.messages);
             }
         });
         
@@ -100,6 +154,20 @@
             messageDiv.textContent = content;
             chatPanel.appendChild(messageDiv);
             chatPanel.scrollTop = chatPanel.scrollHeight;
+        }
+        
+        function addLLMMessages(messages) {
+            const llmPanel = document.getElementById('llmMessages');
+            llmPanel.innerHTML = ''; // 清空现有内容
+            
+            messages.forEach(msg => {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'llm-message';
+                messageDiv.innerHTML = `<span class="role">${msg.role}:</span> ${msg.content}`;
+                llmPanel.appendChild(messageDiv);
+            });
+            
+            llmPanel.scrollTop = llmPanel.scrollHeight;
         }
         
         function sendMessage() {

@@ -1,6 +1,7 @@
 import os
 from openai import OpenAI
 import json
+from utils.globals import socketio
 
 class LLMHandler:
     def __init__(self, model_config):
@@ -10,17 +11,36 @@ class LLMHandler:
         )
         self.model = model_config.get('model', 'qwen-plus')
         
-    async def evaluate_response(self, prompt, user_response):
+    async def evaluate_response(self, prompt, user_response, conversation_history=None):
         try:
-            # 构建完整提示词
-            full_prompt = f"{prompt}\n\n用户回答：{user_response}"
+            # 构建消息列表
+            messages = [
+                # 系统角色：提供评估标准和任务说明
+                {'role': 'system', 'content': prompt},
+            ]
+            
+            # 添加历史对话
+            if conversation_history:
+                for entry in conversation_history:
+                    if entry.get('user'):
+                        messages.append({'role': 'user', 'content': entry['user']})
+                    if entry.get('assistant'):
+                        messages.append({'role': 'assistant', 'content': entry['assistant']})
+            
+            # 添加当前用户输入
+            messages.append({'role': 'user', 'content': user_response})
+            
+            # 发送消息列表到前端显示
+            if socketio:
+                socketio.emit('message', {
+                    'type': 'llm_messages',
+                    'messages': messages
+                })
             
             # 调用LLM进行评估
             completion = self.client.chat.completions.create(
                 model=self.model,
-                messages=[
-                    {'role': 'user', 'content': full_prompt}
-                ]
+                messages=messages
             )
             
             # 获取响应文本
