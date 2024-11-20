@@ -96,12 +96,8 @@ async def process_message(data):
         result = await framework.process_response(data['content'])
         
         if result['type'] == 'score':
-            # 如果评估完成，发送评分结果并切换到下一个条目
-            socketio.emit('message', {
-                'type': 'message',
-                'role': 'system',
-                'content': f"评分完成：{result['data']}"
-            })
+            # 如果评估完成，切换到下一个条目
+            # 注意：不显示评分JSON
             
             # 移动到下一个项目
             next_item = framework.next_item()
@@ -114,7 +110,7 @@ async def process_message(data):
                     'total_items': len(framework.items)
                 })
                 
-                # 直接提取并发送下一个问诊问题，而不是等待 LLM 生成
+                # 提取并发送下一个问诊问题
                 question = get_question(next_item.prompt)
                 socketio.emit('message', {
                     'type': 'message',
@@ -130,11 +126,12 @@ async def process_message(data):
                 })
         else:
             # 这是后续的对话，使用 LLM 的回复
-            socketio.emit('message', {
-                'type': 'message',
-                'role': 'assistant',
-                'content': result['data']
-            })
+            if result.get('show_response', True):  # 检查是否需要显示响应
+                socketio.emit('message', {
+                    'type': 'message',
+                    'role': 'assistant',
+                    'content': result['data']
+                })
             
     except Exception as e:
         print(f"异步处理错误: {str(e)}")

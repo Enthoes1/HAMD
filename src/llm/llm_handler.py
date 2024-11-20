@@ -15,7 +15,6 @@ class LLMHandler:
         try:
             # 构建消息列表
             messages = [
-                # 系统角色：提供评估标准和任务说明
                 {'role': 'system', 'content': prompt},
             ]
             
@@ -49,9 +48,11 @@ class LLMHandler:
             # 尝试解析JSON评分
             score = self._try_parse_score(response)
             if score:
-                return {'type': 'score', 'data': score}
+                # 返回评分结果，但不包含原始响应
+                return {'type': 'score', 'data': score, 'show_response': False}
             else:
-                return {'type': 'message', 'data': response}
+                # 返回对话内容，需要显示
+                return {'type': 'message', 'data': response, 'show_response': True}
             
         except Exception as e:
             print(f"LLM调用出错: {str(e)}")
@@ -60,14 +61,57 @@ class LLMHandler:
     def _try_parse_score(self, response):
         """尝试从响应中解析评分JSON"""
         try:
-            start = response.find('{')
-            end = response.rfind('}') + 1
-            if start != -1 and end != -1:
-                json_str = response[start:end]
-                score_data = json.loads(json_str)
-                # 验证是否是评分数据
-                if 'score' in score_data or ('label' in score_data and any(k.endswith('score') for k in score_data.keys())):
-                    return score_data
+            # 找到所有可能的JSON对象
+            json_objects = []
+            start = 0
+            while True:
+                # 查找下一个JSON开始位置
+                start = response.find('{', start)
+                if start == -1:
+                    break
+                    
+                # 查找匹配的结束括号
+                stack = []
+                end = start
+                for i in range(start, len(response)):
+                    if response[i] == '{':
+                        stack.append('{')
+                    elif response[i] == '}':
+                        stack.pop()
+                        if not stack:  # 找到匹配的结束括号
+                            end = i + 1
+                            break
+                
+                if end > start:
+                    try:
+                        json_str = response[start:end]
+                        score_data = json.loads(json_str)
+                        # 验证是否是评分数据
+                        if 'score' in score_data and 'label' in score_data:
+                            json_objects.append(score_data)
+                    except:
+                        pass
+                    
+                start = end + 1
+                
+            # 如果找到有效的评分JSON对象
+            if json_objects:
+                # 如果只有一个评分对象，直接返回
+                if len(json_objects) == 1:
+                    return json_objects[0]
+                # 如果有多个评分对象，返回一个组合对象
+                else:
+                    combined_scores = {}
+                    for obj in json_objects:
+                        label = str(obj['label'])
+                        if 'score' in obj:
+                            if isinstance(obj['score'], dict):
+                                combined_scores[label] = obj['score']
+                            else:
+                                combined_scores[label] = {'score': obj['score']}
+                    return combined_scores
+                
             return None
-        except:
+        except Exception as e:
+            print(f"JSON解析错误: {str(e)}")
             return None
