@@ -144,4 +144,34 @@ python src/app.py
 - [ ] 实现语音交互功能
 - [ ] 添加评估报告生成
 - [ ] 优化用户界面
-- [ ] 添加数据分析功能
+
+## 配置说明
+
+### 大语言模型配置
+1. **配置位置**: 在 `src/app.py` 中设置模型参数
+```python
+model_config = {
+    'api_key': os.getenv("DASHSCOPE_API_KEY"),  # 从环境变量获取API密钥
+    'base_url': "https://dashscope.aliyuncs.com/compatible-mode/v1",  # 通义千问API地址
+    'model': 'qwen-plus'  # 使用的模型版本
+}
+```
+
+2. **环境变量设置**
+- Linux/Mac:
+```bash
+export DASHSCOPE_API_KEY=your_api_key
+```
+- Windows (CMD):
+```cmd
+set DASHSCOPE_API_KEY=your_api_key
+```
+- Windows (PowerShell):
+```powershell
+$env:DASHSCOPE_API_KEY="your_api_key"
+```
+
+3. **支持的模型**
+- 当前使用通义千问API
+- 默认模型: qwen-plus
+- 可在 model_config 中修改 model 参数以使用其他版本
