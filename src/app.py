@@ -8,11 +8,12 @@ from flask import Flask, render_template
 from flask_socketio import emit
 import asyncio
 from core.assessment_framework import AssessmentFramework
-from utils.globals import socketio, init_socketio  # 导入 socketio 实例和初始化函数
+from utils.globals import socketio, init_socketio
+from speech.speech_handler import SpeechHandler  # 保留语音处理器导入
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
-init_socketio(app)  # 初始化 socketio
+init_socketio(app)
 
 # 配置模型参数
 model_config = {
@@ -28,6 +29,9 @@ prompt_file_path = os.path.join(root_dir, "提示词.txt")
 # 初始化评估框架
 framework = AssessmentFramework(prompt_file_path, model_config)
 framework.initialize_items_from_prompts()
+
+# 初始化语音处理器（仅用于TTS）
+speech_handler = SpeechHandler()
 
 def get_question(prompt):
     """从提示词中提取问诊问题"""
@@ -92,7 +96,6 @@ def handle_message(data):
 
 async def process_message(data):
     try:
-        # 处理用户响应
         result = await framework.process_response(data['content'])
         
         if result['type'] == 'score':
@@ -125,14 +128,17 @@ async def process_message(data):
                     'content': "评估完成！总评分结果：" + str(framework.scores)
                 })
         else:
-            # 这是后续的对话，使用 LLM 的回复
-            if result.get('show_response', True):  # 检查是否需要显示响应
+            if result.get('show_response', True):
+                # 发送文字到前端
                 socketio.emit('message', {
                     'type': 'message',
                     'role': 'assistant',
                     'content': result['data']
                 })
-            
+                
+                # 转换为语音并播放
+                await speech_handler.text_to_speech(result['data'])
+                
     except Exception as e:
         print(f"异步处理错误: {str(e)}")
         socketio.emit('message', {
