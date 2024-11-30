@@ -144,7 +144,36 @@
         .container {
             display: none; /* 初始隐藏主界面 */
         }
+        
+        #recordButton {
+            padding: 8px 15px;
+            background-color: #4CAF50;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        #recordButton.recording {
+            background-color: #f44336;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.1);
+            }
+            100% {
+                transform: scale(1);
+            }
+        }
     </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
 </head>
 <body>
     <div id="patientInfoForm" class="patient-info-form">
@@ -185,6 +214,9 @@
             
             <div class="input-panel">
                 <input type="text" id="userInput" placeholder="请输入您的回答...">
+                <button id="recordButton" onclick="toggleRecording()">
+                    <i class="fas fa-microphone"></i>
+                </button>
                 <button onclick="sendMessage()">发送</button>
             </div>
         </div>
@@ -284,6 +316,29 @@
             document.getElementById('patientInfoForm').style.display = 'none';
             document.querySelector('.container').style.display = 'flex';
         }
+        
+        let isRecording = false;
+        
+        function toggleRecording() {
+            const button = document.getElementById('recordButton');
+            
+            if (!isRecording) {
+                // 开始录音
+                isRecording = true;
+                button.classList.add('recording');
+                socket.emit('start_recording');
+            } else {
+                // 停止录音
+                isRecording = false;
+                button.classList.remove('recording');
+                socket.emit('stop_recording');
+            }
+        }
+        
+        // 添加语音识别结果处理
+        socket.on('transcription', function(data) {
+            document.getElementById('userInput').value = data.text;
+        });
     </script>
 </body>
 </html> 

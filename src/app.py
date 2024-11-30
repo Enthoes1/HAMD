@@ -1,5 +1,6 @@
 import os
 import sys
+import warnings
 
 # 添加项目根目录到 Python 路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -10,6 +11,9 @@ import asyncio
 from core.assessment_framework import AssessmentFramework
 from utils.globals import socketio, init_socketio
 from speech.speech_handler import SpeechHandler  # 保留语音处理器导入
+from speech.speech_recognition import SpeechRecognition
+
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
@@ -32,6 +36,9 @@ framework.initialize_items_from_prompts()
 
 # 初始化语音处理器（仅用于TTS）
 speech_handler = SpeechHandler()
+
+# 初始化语音识别器
+speech_recognizer = SpeechRecognition()
 
 def get_question(prompt):
     """从提示词中提取问诊问题"""
@@ -197,6 +204,36 @@ def handle_patient_info(data):
             'type': 'message',
             'role': 'system',
             'content': f"错误：{str(e)}"
+        })
+
+@socketio.on('start_recording')
+def handle_start_recording():
+    try:
+        speech_recognizer.start_recording()
+    except Exception as e:
+        print(f"开始录音错误: {str(e)}")
+        emit('message', {
+            'type': 'message',
+            'role': 'system',
+            'content': f"录音错误：{str(e)}"
+        })
+
+@socketio.on('stop_recording')
+def handle_stop_recording():
+    try:
+        # 停止录音并获取识别结果
+        text = speech_recognizer.stop_recording()
+        
+        # 发送识别结果到前端
+        emit('transcription', {
+            'text': text
+        })
+    except Exception as e:
+        print(f"停止录音错误: {str(e)}")
+        emit('message', {
+            'type': 'message',
+            'role': 'system',
+            'content': f"录音错误：{str(e)}"
         })
 
 if __name__ == '__main__':
