@@ -52,32 +52,8 @@ def index():
 @socketio.on('connect')
 def handle_connect():
     try:
-        # 发送初始状态
-        current_item = framework.items[framework.current_item_index]
-        emit('message', {
-            'type': 'status',
-            'current_item': f"第 {framework.current_item_index + 1} 题",
-            'current_index': framework.current_item_index,
-            'total_items': len(framework.items)
-        })
-        
-        # 提取并发送问诊问题
-        question = get_question(current_item.prompt)
-        emit('message', {
-            'type': 'message',
-            'role': 'system',
-            'content': question
-        })
-        
-        # 播放问题语音
-        def async_tts():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(speech_handler.text_to_speech(question))
-            loop.close()
-        
-        socketio.start_background_task(async_tts)
-        
+        # 连接时不做任何操作，等待用户填写基本信息
+        pass
     except Exception as e:
         print(f"连接处理错误: {str(e)}")
         emit('message', {
@@ -122,40 +98,102 @@ async def process_message(data):
                 
                 # 提取并发送下一个问诊问题
                 question = get_question(next_item.prompt)
+                # 先发送文本
                 socketio.emit('message', {
                     'type': 'message',
                     'role': 'system',
                     'content': question
                 })
                 
-                # 播放新问题的语音
-                await speech_handler.text_to_speech(question)
+                # 异步播放语音
+                def async_tts():
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(speech_handler.text_to_speech(question))
+                    loop.close()
+                
+                socketio.start_background_task(async_tts)
                 
             else:
                 # 评估完成
                 completion_message = "评估完成！"
+                # 先发送文本
                 socketio.emit('message', {
                     'type': 'message',
                     'role': 'system',
                     'content': completion_message
                 })
-                await speech_handler.text_to_speech(completion_message)
+                
+                # 异步播放语音
+                def async_tts():
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(speech_handler.text_to_speech(completion_message))
+                    loop.close()
+                
+                socketio.start_background_task(async_tts)
                 
         else:
             if result.get('show_response', True):
-                # 发送文字到前端
+                # 先发送文字到前端
                 socketio.emit('message', {
                     'type': 'message',
                     'role': 'assistant',
                     'content': result['data']
                 })
                 
-                # 转换为语音并播放
-                await speech_handler.text_to_speech(result['data'])
+                # 异步播放语音
+                def async_tts():
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(speech_handler.text_to_speech(result['data']))
+                    loop.close()
+                
+                socketio.start_background_task(async_tts)
                 
     except Exception as e:
         print(f"异步处理错误: {str(e)}")
         socketio.emit('message', {
+            'type': 'message',
+            'role': 'system',
+            'content': f"错误：{str(e)}"
+        })
+
+@socketio.on('submit_patient_info')
+def handle_patient_info(data):
+    try:
+        # 保存患者信息
+        framework.set_patient_info(data)
+        
+        # 发送初始状态
+        current_item = framework.items[framework.current_item_index]
+        emit('message', {
+            'type': 'status',
+            'current_item': f"第 {framework.current_item_index + 1} 题",
+            'current_index': framework.current_item_index,
+            'total_items': len(framework.items)
+        })
+        
+        # 提取并发送第一个问诊问题
+        question = get_question(current_item.prompt)
+        emit('message', {
+            'type': 'message',
+            'role': 'system',
+            'content': question
+        })
+        
+        # 播放问题语音
+        def async_tts():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(speech_handler.text_to_speech(question))
+            loop.close()
+        
+        socketio.start_background_task(async_tts)
+        
+    except Exception as e:
+        print(f"处理患者信息错误: {str(e)}")
+        emit('message', {
             'type': 'message',
             'role': 'system',
             'content': f"错误：{str(e)}"

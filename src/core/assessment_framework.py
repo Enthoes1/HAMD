@@ -17,6 +17,7 @@ class AssessmentFramework:
         self.current_item_index = 0
         self.scores = {}
         self.conversation_history = {}  # 存储每个条目的对话历史
+        self.patient_info = {}  # 存储患者基本信息
         
         # 创建评分结果保存目录
         self.results_dir = os.path.join(os.path.dirname(prompt_file_path), "assessment_results")
@@ -82,22 +83,25 @@ class AssessmentFramework:
         """获取特定条目的对话历史"""
         return self.conversation_history.get(item_id, [])
         
+    def set_patient_info(self, info):
+        """设置患者基本信息"""
+        self.patient_info = info
+        
     def save_assessment_result(self):
         """保存评估结果到文件"""
         try:
-            # 生成时间戳作为文件名
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"assessment_{timestamp}.json"
             filepath = os.path.join(self.results_dir, filename)
             
-            # 构建完整的评估数据
+            # 在评估数据中加入患者信息
             assessment_data = {
                 'timestamp': timestamp,
+                'patient_info': self.patient_info,  # 添加患者信息
                 'scores': self.scores,
                 'conversation_history': self.conversation_history
             }
             
-            # 保存到文件
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(assessment_data, f, ensure_ascii=False, indent=2)
                 
