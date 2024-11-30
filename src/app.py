@@ -68,6 +68,16 @@ def handle_connect():
             'role': 'system',
             'content': question
         })
+        
+        # 播放问题语音
+        def async_tts():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(speech_handler.text_to_speech(question))
+            loop.close()
+        
+        socketio.start_background_task(async_tts)
+        
     except Exception as e:
         print(f"连接处理错误: {str(e)}")
         emit('message', {
@@ -100,9 +110,6 @@ async def process_message(data):
         
         if result['type'] == 'score':
             # 如果评估完成，切换到下一个条目
-            # 注意：不显示评分JSON
-            
-            # 移动到下一个项目
             next_item = framework.next_item()
             if next_item:
                 # 更新状态
@@ -120,13 +127,20 @@ async def process_message(data):
                     'role': 'system',
                     'content': question
                 })
+                
+                # 播放新问题的语音
+                await speech_handler.text_to_speech(question)
+                
             else:
                 # 评估完成
+                completion_message = "评估完成！"
                 socketio.emit('message', {
                     'type': 'message',
                     'role': 'system',
-                    'content': "评估完成！总评分结果：" + str(framework.scores)
+                    'content': completion_message
                 })
+                await speech_handler.text_to_speech(completion_message)
+                
         else:
             if result.get('show_response', True):
                 # 发送文字到前端

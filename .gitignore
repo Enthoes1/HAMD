@@ -1,3 +1,7 @@
+# 评估结果文件
+assessment_results/
+assessment_results/*.json
+
 # Python
 __pycache__/
 *.py[cod]
@@ -30,6 +34,10 @@ ENV/
 .vscode/
 *.swp
 *.swo
+
+# OS
+.DS_Store
+Thumbs.db
 
 # Environment variables
 .env

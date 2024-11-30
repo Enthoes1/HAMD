@@ -3,6 +3,7 @@ from llm.llm_handler import LLMHandler
 import json
 import os
 from datetime import datetime
+from src.speech.speech_handler import SpeechHandler
 
 class AssessmentItem:
     def __init__(self, item_id, prompt):
@@ -26,6 +27,7 @@ class AssessmentFramework:
         self.prompt_parser = PromptParser(prompt_file_path)
         self.prompt_parser.parse_file()
         self.llm_handler = LLMHandler(model_config)
+        self.speech_handler = SpeechHandler()
         
     def initialize_items_from_prompts(self):
         """根据提示词文件初始化评估项目"""
@@ -54,8 +56,10 @@ class AssessmentFramework:
             if result['type'] == 'score':
                 # 存储评分结果
                 self.scores[current_item.item_id] = result['data']
-                # 每次有新的评分就保存
-                self.save_assessment_result()
+                
+                # 只在完成所有条目后保存结果
+                if self.current_item_index == len(self.items) - 1:
+                    self.save_assessment_result()
             else:
                 # 记录对话历史
                 self.conversation_history[current_item.item_id].append({
