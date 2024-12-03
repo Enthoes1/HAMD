@@ -15,7 +15,7 @@ def check_gpu_status():
     print("=================\n")
 
 class SpeechRecognition:
-    def __init__(self, model_name="large-v3"):  # 使用 medium 型号平衡性能和准确率
+    def __init__(self, model_name="base"):  # 使用 medium 型号平衡性能和准确率
         # 检查GPU状态
         check_gpu_status()
         

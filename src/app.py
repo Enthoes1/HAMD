@@ -28,7 +28,7 @@ model_config = {
 
 # 获取项目根目录路径
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-prompt_file_path = os.path.join(root_dir, "提示词.txt")
+prompt_file_path = os.path.join(root_dir, "newprompt.txt")#在此处修改提示词指向
 
 # 初始化评估框架
 framework = AssessmentFramework(prompt_file_path, model_config)
@@ -43,13 +43,30 @@ speech_recognizer = SpeechRecognition()
 def get_question(prompt):
     """从提示词中提取问诊问题"""
     try:
-        if "向患者提问：" in prompt:
-            after_question = prompt.split("向患者提问：")[1]
-            if "？" in after_question:
-                return after_question.split("？")[0] + "？"
+        # 处理嵌套的JSON字符串问题
+        # 将内部的JSON格式字符串中的引号替换为单引号
+        import re
+        processed_prompt = re.sub(r'({"label":[^}]+})', lambda m: m.group(1).replace('"', "'"), prompt)
+        
+        # 将提示词解析为JSON
+        import json
+        prompt_data = json.loads(processed_prompt)
+        
+        # 从条目详情中提取问题
+        if "条目详情" in prompt_data and "问题" in prompt_data["条目详情"]:
+            return prompt_data["条目详情"]["问题"]
+            
         return "请描述您的情况。"
     except Exception as e:
         print(f"提取问题出错: {str(e)}")
+        print(f"原始提示词: {prompt}")
+        # 如果JSON解析失败，尝试使用正则表达式直接提取
+        try:
+            match = re.search(r'"问题":\s*"([^"]+)"', prompt)
+            if match:
+                return match.group(1)
+        except Exception as e2:
+            print(f"正则提取失败: {str(e2)}")
         return "请描述您的情况。"
 
 @app.route('/')
