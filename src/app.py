@@ -109,7 +109,6 @@ async def process_message(data):
         result = await framework.process_response(data['content'])
         
         if result['type'] == 'score':
-            # 如果评估完成，切换到下一个条目
             next_item = framework.next_item()
             if next_item:
                 # 更新状态
@@ -122,7 +121,13 @@ async def process_message(data):
                 
                 # 提取并发送下一个问诊问题
                 question = get_question(next_item.prompt)
-                # 先发送文本
+                
+                # 将问题添加到对话历史（作为 assistant 的第一句话）
+                framework.conversation_history[next_item.item_id].append({
+                    'assistant': question
+                })
+                
+                # 发送到前端显示（仍然使用 system 角色）
                 socketio.emit('message', {
                     'type': 'message',
                     'role': 'system',
@@ -134,25 +139,6 @@ async def process_message(data):
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     loop.run_until_complete(speech_handler.text_to_speech(question))
-                    loop.close()
-                
-                socketio.start_background_task(async_tts)
-                
-            else:
-                # 评估完成
-                completion_message = "评估完成！"
-                # 先发送文本
-                socketio.emit('message', {
-                    'type': 'message',
-                    'role': 'system',
-                    'content': completion_message
-                })
-                
-                # 异步播放语音
-                def async_tts():
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    loop.run_until_complete(speech_handler.text_to_speech(completion_message))
                     loop.close()
                 
                 socketio.start_background_task(async_tts)
@@ -200,6 +186,13 @@ def handle_patient_info(data):
         
         # 提取并发送第一个问诊问题
         question = get_question(current_item.prompt)
+        
+        # 将问题添加到对话历史（作为 assistant 的第一句话）
+        framework.conversation_history[current_item.item_id].append({
+            'assistant': question
+        })
+        
+        # 发送到前端显示（仍然使用 system 角色）
         emit('message', {
             'type': 'message',
             'role': 'system',

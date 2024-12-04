@@ -5,6 +5,7 @@ import numpy as np
 import tempfile
 from pathlib import Path
 import torch
+import os
 
 def check_gpu_status():
     """检查GPU状态"""
@@ -15,7 +16,18 @@ def check_gpu_status():
     print("=================\n")
 
 class SpeechRecognition:
-    def __init__(self, model_name="base"):  # 使用 medium 型号平衡性能和准确率
+    def __init__(self, model_name="base"):  
+        # 检查 ffmpeg 是否可用
+        try:
+            import subprocess
+            subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
+            print("ffmpeg 已安装并可用")
+        except Exception as e:
+            print("错误：ffmpeg 未安装或不可用")
+            print("请使用 conda install ffmpeg 安装 ffmpeg")
+            print(f"详细错误: {str(e)}")
+            raise Exception("ffmpeg 未安装或不可用")
+        
         # 检查GPU状态
         check_gpu_status()
         
@@ -24,12 +36,17 @@ class SpeechRecognition:
         print(f"Using device: {self.device} for Whisper model")
         
         try:
-            # 使用 weights_only=True 加载模型
+            # 使用项目目录作为模型缓存位置
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            cache_dir = os.path.join(project_root, "models", "whisper")
+            os.makedirs(cache_dir, exist_ok=True)
+            print(f"使用项目目录作为模型缓存: {cache_dir}")
+            
             self.model = whisper.load_model(
                 model_name,
                 device=self.device,
-                download_root=None,  # 使用默认下载路径
-                in_memory=True      # 保持模型在内存中
+                download_root=cache_dir,  # 使用项目目录
+                in_memory=True
             ).to(self.device)
             print(f"Successfully loaded {model_name} model")
         except Exception as e:
@@ -79,8 +96,9 @@ class SpeechRecognition:
     def stop_recording(self):
         """停止录音并返回识别结果"""
         if not self.recording or not self.stream:
+            print("没有正在进行的录音")
             return ""
-            
+        
         try:
             self.recording = False
             self.stream.stop()
@@ -91,42 +109,51 @@ class SpeechRecognition:
             if not self.audio_data:
                 print("没有收到录音数据")
                 return ""
-                
+            
             # 将录音数据转换为numpy数组
             try:
                 audio_data = np.concatenate(self.audio_data, axis=0)
                 print(f"录音数据形状: {audio_data.shape}")
+                print(f"录音数据类型: {audio_data.dtype}")
+                print(f"录音数据范围: {np.min(audio_data)} to {np.max(audio_data)}")
             except Exception as e:
                 print(f"处理录音数据出错: {str(e)}")
                 return ""
-                
-            # 创建临时文件
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
-                temp_path = temp_file.name
             
             try:
-                # 保存音频文件
-                sf.write(temp_path, audio_data, self.sample_rate)
-                
-                # 使用whisper进行识别，使用最基本的配置
-                result = self.model.transcribe(
-                    temp_path,
-                    language='zh'  # 只指定语言为中文
-                )
-                
-                return result["text"].strip()
-                
-            finally:
-                # 确保删除临时文件
+                # 直接使用内存中的音频数据，跳过文件保存
                 try:
-                    Path(temp_path).unlink(missing_ok=True)
-                except Exception as e:
-                    print(f"删除临时文件失败: {str(e)}")
+                    print(f"开始识别音频...")
+                    # 确保音频数据是一维的
+                    audio_data = audio_data.flatten()
+                    result = self.model.transcribe(
+                        audio_data,
+                        language='zh'
+                    )
+                    print("识别完成")
                     
+                    text = result["text"].strip()
+                    print(f"识别结果: {text}")
+                    return text
+                    
+                except Exception as e:
+                    print(f"Whisper识别错误: {str(e)}")
+                    import traceback
+                    print(f"详细错误信息: {traceback.format_exc()}")
+                    return ""
+                    
+            except Exception as e:
+                print(f"录音处理错误: {str(e)}")
+                import traceback
+                print(f"详细错误信息: {traceback.format_exc()}")
+                return ""
+            
         except Exception as e:
             print(f"录音处理错误: {str(e)}")
+            import traceback
+            print(f"详细错误信息: {traceback.format_exc()}")
             return ""
-        
+    
     def __del__(self):
         """析构函数，确保资源被正确释放"""
         if self.stream is not None:

@@ -45,3 +45,10 @@ Thumbs.db
 # Project specific
 提示词.txt
 *.log 
+
+# Whisper model files
+models/whisper/
+
+# Recording files
+recordings/
+*.wav

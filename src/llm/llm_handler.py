@@ -9,7 +9,7 @@ class LLMHandler:
             api_key=model_config.get('api_key', os.getenv("DASHSCOPE_API_KEY")),
             base_url=model_config.get('base_url', "https://dashscope.aliyuncs.com/compatible-mode/v1")
         )
-        self.model = model_config.get('model', 'qwen-plus')
+        self.model = model_config.get('model', 'qwen-plus')#此处选择模型属性
         
     async def evaluate_response(self, prompt, user_response, conversation_history=None):
         try:
