@@ -55,12 +55,18 @@ class AssessmentFramework:
                 current_item.prompt, 
                 user_response,
                 history,
-                question  # 传递问题
+                question
             )
             
             if result['type'] == 'score':
-                # 存储评分结果
-                self.scores[current_item.item_id] = result['data']
+                # 处理评分结果
+                scores = result['data']
+                # 如果是单个评分对象
+                if not isinstance(scores, list):
+                    scores = [scores]
+                # 存储每个评分
+                for score in scores:
+                    self.scores[current_item.item_id] = score
             else:
                 # 记录 assistant 的回复
                 self.conversation_history[current_item.item_id].append({
