@@ -11,14 +11,18 @@ class LLMHandler:
         )
         self.model = model_config.get('model', 'qwen-plus')#此处选择模型属性
         
-    async def evaluate_response(self, prompt, user_response, conversation_history=None):
+    async def evaluate_response(self, prompt, user_response, conversation_history=None, question=None):
         try:
             # 构建消息列表
             messages = [
                 {'role': 'system', 'content': prompt},
             ]
             
-            # 添加历史对话
+            # 添加问题作为第一条 assistant 消息
+            if question:
+                messages.append({'role': 'assistant', 'content': question})
+            
+            # 添加历史对话（不包括当前用户输入）
             if conversation_history:
                 for entry in conversation_history:
                     if entry.get('user'):
@@ -51,8 +55,33 @@ class LLMHandler:
                 # 返回评分结果，但不包含原始响应
                 return {'type': 'score', 'data': score, 'show_response': False}
             else:
-                # 返回对话内容，需要显示
-                return {'type': 'message', 'data': response, 'show_response': True}
+                # 检查响应中是否包含分数相关内容
+                score_keywords = ['0分', '1分', '2分', '3分', '4分']
+                if any(keyword in response for keyword in score_keywords):
+                    # 如果包含分数相关内容，重新发送请求
+                    messages.append({
+                        'role': 'system', 
+                        'content': "请不要与患者讨论分数等内容，如果根据现有对话能够判断分数，则直接输出json；如果不能，请继续追问。"
+                    })
+                    
+                    # 再次调用LLM
+                    completion = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=messages
+                    )
+                    
+                    # 获取新的响应
+                    new_response = completion.choices[0].message.content
+                    
+                    # 再次尝试解析JSON
+                    score = self._try_parse_score(new_response)
+                    if score:
+                        return {'type': 'score', 'data': score, 'show_response': False}
+                    else:
+                        return {'type': 'message', 'data': new_response, 'show_response': True}
+                else:
+                    # 如果不包含分数相关内容，返回原始响应
+                    return {'type': 'message', 'data': response, 'show_response': True}
             
         except Exception as e:
             print(f"LLM调用出错: {str(e)}")

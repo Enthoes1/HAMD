@@ -245,6 +245,13 @@
             } else if (data.type === 'llm_messages') {
                 // 添加LLM消息列表
                 addLLMMessages(data.messages);
+            } else if (data.type === 'assessment_complete') {
+                // 显示评估完成弹窗
+                alert(data.content);
+                // 可以在这里添加其他完成后的操作，比如禁用输入框等
+                document.getElementById('user-input').disabled = true;
+                document.getElementById('send-button').disabled = true;
+                document.getElementById('record-button').disabled = true;
             }
         });
         

@@ -21,10 +21,14 @@ class AssessmentFramework:
         
         # 创建评分结果保存目录
         self.results_dir = os.path.join(os.path.dirname(prompt_file_path), "assessment_results")
-        if not os.path.exists(self.results_dir):
-            os.makedirs(self.results_dir)
+        self.progress_dir = os.path.join(os.path.dirname(prompt_file_path), "progress")  # 添加进度保存目录
         
-        # 初始化提示词解析器和LLM处理器
+        # 创建必要的目录
+        for directory in [self.results_dir, self.progress_dir]:
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+        
+        # 初始化提示词解析器LLM处理器
         self.prompt_parser = PromptParser(prompt_file_path)
         self.prompt_parser.parse_file()
         self.llm_handler = LLMHandler(model_config)
@@ -43,28 +47,23 @@ class AssessmentFramework:
     def add_item(self, item):
         self.items.append(item)
         
-    async def process_response(self, user_response):
+    async def process_response(self, user_response, history=None, question=None):
         try:
             current_item = self.items[self.current_item_index]
-            history = self.conversation_history[current_item.item_id]
             
             result = await self.llm_handler.evaluate_response(
                 current_item.prompt, 
                 user_response,
-                history
+                history,
+                question  # 传递问题
             )
             
             if result['type'] == 'score':
                 # 存储评分结果
                 self.scores[current_item.item_id] = result['data']
-                
-                # 只在完成所有条目后保存结果
-                if self.current_item_index == len(self.items) - 1:
-                    self.save_assessment_result()
             else:
-                # 记录对话历史
+                # 记录 assistant 的回复
                 self.conversation_history[current_item.item_id].append({
-                    'user': user_response,
                     'assistant': result['data']
                 })
             
@@ -109,3 +108,68 @@ class AssessmentFramework:
             
         except Exception as e:
             print(f"保存评估结果出错: {str(e)}")
+    
+    def save_progress(self):
+        """保存当前进度"""
+        try:
+            if not self.patient_info:
+                print("没有患者信息，无法保存进度")
+                return False
+            
+            if 'id' not in self.patient_info:
+                print(f"患者信息中缺少ID字段: {self.patient_info}")
+                return False
+            
+            # 打印当前状态
+            print(f"正在保存进度:")
+            print(f"- 患者ID: {self.patient_info['id']}")
+            print(f"- 当前题目: {self.current_item_index + 1}")
+            print(f"- 已完成评分: {len(self.scores)}")
+            
+            progress_data = {
+                'patient_info': self.patient_info,
+                'current_item_index': self.current_item_index,
+                'scores': self.scores,
+                'conversation_history': self.conversation_history
+            }
+            
+            filename = f"progress_{self.patient_info['id']}.json"
+            filepath = os.path.join(self.progress_dir, filename)
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(progress_data, f, ensure_ascii=False, indent=2)
+                
+            print(f"进度已保存: {filepath}")
+            return True
+            
+        except Exception as e:
+            print(f"保存进度失败: {str(e)}")
+            import traceback
+            print(f"详细错误信息: {traceback.format_exc()}")
+            return False
+    
+    def load_progress(self, patient_id):
+        """加载已保存的进度"""
+        try:
+            filename = f"progress_{patient_id}.json"
+            filepath = os.path.join(self.progress_dir, filename)
+            
+            if not os.path.exists(filepath):
+                print(f"未找到进度文件: {filepath}")
+                return False
+                
+            with open(filepath, 'r', encoding='utf-8') as f:
+                progress_data = json.load(f)
+                
+            # 恢复状态
+            self.patient_info = progress_data['patient_info']
+            self.current_item_index = progress_data['current_item_index']
+            self.scores = progress_data['scores']
+            self.conversation_history = progress_data['conversation_history']
+            
+            print(f"已恢复进度，当前题目: {self.current_item_index + 1}")
+            return True
+            
+        except Exception as e:
+            print(f"加载进度失败: {str(e)}")
+            return False

@@ -52,3 +52,7 @@ models/whisper/
 # Recording files
 recordings/
 *.wav
+
+# Progress files
+progress/
+*.json
