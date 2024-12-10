@@ -24,3 +24,17 @@ class PromptParser:
     def get_prompt(self, label):
         """获取特定标签的提示词"""
         return self.prompts.get(label)
+    
+    @staticmethod
+    def get_question(prompt):
+        """从提示词中提取问诊问题"""
+        try:
+            import re
+            # 使用正则表达式匹配"问题"后面的内容
+            match = re.search(r'"问题"\s*:\s*"([^"]+)"', prompt)
+            if match:
+                return match.group(1)
+            return "请描述您的情况。"
+        except Exception as e:
+            print(f"提取问题出错: {str(e)}")
+            return "请描述您的情况。"

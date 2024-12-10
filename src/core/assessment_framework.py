@@ -1,5 +1,5 @@
-from utils.prompt_parser import PromptParser
-from llm.llm_handler import LLMHandler
+from src.utils.prompt_parser import PromptParser
+from src.llm.llm_handler import LLMHandler
 import json
 import os
 from datetime import datetime
@@ -21,14 +21,14 @@ class AssessmentFramework:
         
         # 创建评分结果保存目录
         self.results_dir = os.path.join(os.path.dirname(prompt_file_path), "assessment_results")
-        self.progress_dir = os.path.join(os.path.dirname(prompt_file_path), "progress")  # 添加进度保存目录
+        self.progress_dir = os.path.join(os.path.dirname(prompt_file_path), "progress")
         
         # 创建必要的目录
         for directory in [self.results_dir, self.progress_dir]:
             if not os.path.exists(directory):
                 os.makedirs(directory)
         
-        # 初始化提示词解析器LLM处理器
+        # 初始化提示词解析器和LLM处理器
         self.prompt_parser = PromptParser(prompt_file_path)
         self.prompt_parser.parse_file()
         self.llm_handler = LLMHandler(model_config)

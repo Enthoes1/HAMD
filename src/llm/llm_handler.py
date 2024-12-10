@@ -1,7 +1,8 @@
 import os
 from openai import OpenAI
 import json
-from utils.globals import socketio
+import dashscope
+from src.utils.globals import socketio
 
 class LLMHandler:
     def __init__(self, model_config):
@@ -34,24 +35,21 @@ class LLMHandler:
             # 添加当前用户输入
             messages.append({'role': 'user', 'content': user_response})
             
-            # 发送消息列表到前端显示
-            if socketio:
-                socketio.emit('message', {
-                    'type': 'llm_messages',
-                    'messages': messages
-                })
+            # 尝试发送消息列表到前端显示（如果socketio可用）
+            try:
+                if socketio:
+                    socketio.emit('message', {
+                        'type': 'llm_messages',
+                        'messages': messages
+                    })
+            except:
+                pass  # 如果socketio不可用，静默忽略
             
             # 调用LLM进行评估
             completion = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                temperature=self.parameters.get('temperature', 0.7),
-                top_p=self.parameters.get('top_p', 0.8),
-                max_tokens=self.parameters.get('max_tokens', 1500),
-                presence_penalty=self.parameters.get('presence_penalty', 0),
-                frequency_penalty=self.parameters.get('frequency_penalty', 0),
-                repetition_penalty=self.parameters.get('repetition_penalty', 1.1),
-                stop=self.parameters.get('stop', None)
+                **self.parameters
             )
             
             # 获取响应文本
@@ -76,13 +74,7 @@ class LLMHandler:
                     completion = self.client.chat.completions.create(
                         model=self.model,
                         messages=messages,
-                        temperature=self.parameters.get('temperature', 0.7),
-                        top_p=self.parameters.get('top_p', 0.8),
-                        max_tokens=self.parameters.get('max_tokens', 1500),
-                        presence_penalty=self.parameters.get('presence_penalty', 0),
-                        frequency_penalty=self.parameters.get('frequency_penalty', 0),
-                        repetition_penalty=self.parameters.get('repetition_penalty', 1.1),
-                        stop=self.parameters.get('stop', None)
+                        **self.parameters
                     )
                     
                     # 获取新的响应
@@ -167,4 +159,36 @@ class LLMHandler:
             return None
         except Exception as e:
             print(f"JSON解析错误: {str(e)}")
-            return None
+            return None            
+    async def generate_chat_response(self, system_prompt, messages):
+        """
+        生成聊天回复
+        
+        Args:
+            system_prompt: str, 系统提示词
+            messages: list, 对话历史
+            
+        Returns:
+            str: 生成的回复
+        """
+        try:
+            # 构建完整的消息列表
+            full_messages = [
+                {"role": "system", "content": system_prompt}
+            ] + messages
+            
+            response = dashscope.Generation.call(
+                model=self.model,
+                messages=full_messages,
+                result_format='message',
+                **self.parameters
+            )
+            
+            if response.status_code == 200:
+                return response.output.choices[0].message.content
+            else:
+                raise Exception(f"API调用失败: {response.code} - {response.message}")
+                
+        except Exception as e:
+            print(f"生成回复时出错: {str(e)}")
+            raise
