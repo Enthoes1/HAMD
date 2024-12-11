@@ -30,10 +30,27 @@ class PromptParser:
         """从提示词中提取问诊问题"""
         try:
             import re
-            # 使用正则表达式匹配"问题"后面的内容
-            match = re.search(r'"问题"\s*:\s*"([^"]+)"', prompt)
+            import json
+            
+            # 尝试直接解析JSON
+            try:
+                data = json.loads(prompt)
+                if "条目详情" in data and "问题" in data["条目详情"]:
+                    return data["条目详情"]["问题"]
+            except json.JSONDecodeError:
+                pass
+            
+            # 如果JSON解析失败，尝试使用正则表达式
+            match = re.search(r'"问题"[^"]*"([^"]+)"', prompt)
             if match:
                 return match.group(1)
+                
+            # 如果正则表达式也失败，尝试提取双引号之间的内容
+            matches = re.findall(r'"([^"]+)"', prompt)
+            for m in matches:
+                if "您" in m or "你" in m or "最近" in m or "是否" in m:
+                    return m
+            
             return "请描述您的情况。"
         except Exception as e:
             print(f"提取问题出错: {str(e)}")

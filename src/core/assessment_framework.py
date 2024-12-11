@@ -15,7 +15,8 @@ class AssessmentFramework:
     def __init__(self, prompt_file_path, model_config):
         self.items = []
         self.current_item_index = 0
-        self.scores = {}
+        self.scores = {}  # 存储评分
+        self.score_history = {}  # 评分历史
         self.conversation_history = {}  # 存储每个条目的对话历史
         self.patient_info = {}  # 存储患者基本信息
         
@@ -58,24 +59,42 @@ class AssessmentFramework:
                 question
             )
             
+            # 记录用户的输入和LLM的响应
+            if not self.conversation_history[current_item.item_id]:
+                self.conversation_history[current_item.item_id] = []
+            
+            # 存储对话历史，使用原始响应
+            history_entry = {
+                'user': user_response,
+                'llm_response': result.get('raw_response', result['data']),  # 优先使用原始响应
+                'show_response': result.get('show_response', True),
+                'type': result['type']
+            }
+            self.conversation_history[current_item.item_id].append(history_entry)
+            
             if result['type'] == 'score':
-                # 处理评分结果
+                # 获取评分数据
                 scores = result['data']
-                # 如果是单个评分对象
                 if not isinstance(scores, list):
                     scores = [scores]
-                # 存储每个评分
-                for score in scores:
-                    self.scores[current_item.item_id] = score
-            else:
-                # 记录 assistant 的回复
-                self.conversation_history[current_item.item_id].append({
-                    'assistant': result['data']
-                })
+                    
+                # 更新评分
+                for score_dict in scores:
+                    for label, value in score_dict.items():
+                        self.scores[label] = value
+                        
+                        # 添加到评分历史
+                        if label not in self.score_history:
+                            self.score_history[label] = []
+                        self.score_history[label].append({
+                            'score': value,
+                            'timestamp': datetime.now().isoformat()
+                        })
             
             return result
+            
         except Exception as e:
-            print(f"处理响应出错: {str(e)}")
+            print(f"处理响应时出错: {str(e)}")
             raise
         
     def next_item(self):
@@ -103,7 +122,8 @@ class AssessmentFramework:
             assessment_data = {
                 'timestamp': timestamp,
                 'patient_info': self.patient_info,  # 添加患者信息
-                'scores': self.scores,
+                'scores': self.scores,  # 最终评分
+                'score_history': self.score_history,  # 评分历史
                 'conversation_history': self.conversation_history
             }
             
@@ -136,6 +156,7 @@ class AssessmentFramework:
                 'patient_info': self.patient_info,
                 'current_item_index': self.current_item_index,
                 'scores': self.scores,
+                'score_history': self.score_history,
                 'conversation_history': self.conversation_history
             }
             
@@ -171,6 +192,7 @@ class AssessmentFramework:
             self.patient_info = progress_data['patient_info']
             self.current_item_index = progress_data['current_item_index']
             self.scores = progress_data['scores']
+            self.score_history = progress_data['score_history']
             self.conversation_history = progress_data['conversation_history']
             
             print(f"已恢复进度，当前题目: {self.current_item_index + 1}")

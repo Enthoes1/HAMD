@@ -28,7 +28,7 @@ prompt_file_path = os.path.join(project_root, "newprompt.txt")
 async def run_test():
     try:
         # 添加轮次计数和限制
-        max_rounds = 5  # 最大评估轮次
+        max_rounds = 1  # 最大评估轮次
         current_round = 0
         consecutive_errors = 0  # 连续错误计数
         max_consecutive_errors = 3  # 最大连续错误次数

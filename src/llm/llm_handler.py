@@ -58,8 +58,13 @@ class LLMHandler:
             # 尝试解析JSON评分
             score = self._try_parse_score(response)
             if score:
-                # 返回评分结果，但不包含原始响应
-                return {'type': 'score', 'data': score, 'show_response': False}
+                # 返回评分结果，同时保存原始响应
+                return {
+                    'type': 'score', 
+                    'data': score, 
+                    'raw_response': response,  # 添加原始响应
+                    'show_response': False
+                }
             else:
                 # 检查响应中是否包含分数相关内容
                 score_keywords = ['0分', '1分', '2分', '3分', '4分']
@@ -83,13 +88,18 @@ class LLMHandler:
                     # 再次尝试解析JSON
                     score = self._try_parse_score(new_response)
                     if score:
-                        return {'type': 'score', 'data': score, 'show_response': False}
+                        return {
+                            'type': 'score', 
+                            'data': score, 
+                            'raw_response': new_response,  # 添加原始响应
+                            'show_response': False
+                        }
                     else:
                         return {'type': 'message', 'data': new_response, 'show_response': True}
                 else:
                     # 如果不包含分数相关内容，返回原始响应
                     return {'type': 'message', 'data': response, 'show_response': True}
-            
+                    
         except Exception as e:
             print(f"LLM调用出错: {str(e)}")
             raise
@@ -99,21 +109,24 @@ class LLMHandler:
         try:
             # 找到所有可能的JSON对象
             json_objects = []
-            start = 0
-            while True:
-                start = response.find('{', start)
+            current_pos = 0
+            
+            while current_pos < len(response):
+                # 找到下一个左花括号
+                start = response.find('{', current_pos)
                 if start == -1:
                     break
-                    
-                # 查找匹配的结束括号
+                
+                # 从左花括号开始，逐字符解析
                 stack = []
                 end = start
+                
                 for i in range(start, len(response)):
                     if response[i] == '{':
                         stack.append('{')
                     elif response[i] == '}':
                         stack.pop()
-                        if not stack:  # 找到匹配的结束括号
+                        if not stack:  # 找到匹配的右花括号
                             end = i + 1
                             break
                 
@@ -121,45 +134,34 @@ class LLMHandler:
                     try:
                         json_str = response[start:end]
                         score_data = json.loads(json_str)
-                        # 验证是否是评分数据
-                        if 'score' in score_data or ('label' in score_data and 'score' in score_data):
-                            # 如果是字典形式的score，拆分成多个评分对象
-                            if isinstance(score_data.get('score', {}), dict):
-                                for label, score in score_data['score'].items():
-                                    json_objects.append({
-                                        'label': int(label),
-                                        'score': score
-                                    })
-                            else:
-                                json_objects.append(score_data)
-                    except:
-                        pass
-                    
-                start = end + 1
+                        
+                        # 验证评分数据的格式
+                        if len(score_data) == 1 and all(isinstance(k, str) and isinstance(v, (int, float)) for k, v in score_data.items()):
+                            json_objects.append(score_data)
+                        else:
+                            print(f"无效的评分格式: {json_str}")
+                            
+                    except json.JSONDecodeError:
+                        print(f"JSON解析错误: {json_str}")
+                    except Exception as e:
+                        print(f"处理评分数据时出错: {str(e)}")
                 
-            # 如果找到有效的评分JSON对象
+                current_pos = end + 1
+            
+            # 如果找到有效的JSON对象
             if json_objects:
-                # 确保每个对象都有正确的格式
-                formatted_objects = []
-                for obj in json_objects:
-                    if 'score' in obj:
-                        formatted_obj = {
-                            'label': obj.get('label', 1),  # 使用默认标签1如果没有指定
-                            'score': obj['score']
-                        }
-                        formatted_objects.append(formatted_obj)
-                
                 # 如果只有一个评分对象，直接返回
-                if len(formatted_objects) == 1:
-                    return formatted_objects[0]
+                if len(json_objects) == 1:
+                    return json_objects[0]
                 # 如果有多个评分对象，返回数组
                 else:
-                    return formatted_objects
-                
+                    return json_objects
+            
             return None
+            
         except Exception as e:
-            print(f"JSON解析错误: {str(e)}")
-            return None            
+            print(f"评分解析出错: {str(e)}")
+            return None
     async def generate_chat_response(self, system_prompt, messages):
         """
         生成聊天回复

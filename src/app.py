@@ -10,6 +10,7 @@ from flask_socketio import emit
 import asyncio
 from core.assessment_framework import AssessmentFramework
 from utils.globals import socketio, init_socketio
+from utils.prompt_parser import PromptParser
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
@@ -37,19 +38,8 @@ prompt_file_path = os.path.join(root_dir, "newprompt.txt")
 framework = AssessmentFramework(prompt_file_path, model_config)
 framework.initialize_items_from_prompts()
 
-def get_question(prompt):
-    """从提示词中提取问诊问题"""
-    try:
-        import re
-        processed_prompt = re.sub(r'({"label":[^}]+})', lambda m: m.group(1).replace('"', "'"), prompt)
-        import json
-        prompt_data = json.loads(processed_prompt)
-        if "条目详情" in prompt_data and "问题" in prompt_data["条目详情"]:
-            return prompt_data["条目详情"]["问题"]
-        return "请描述您的情况。"
-    except Exception as e:
-        print(f"提取问题出错: {str(e)}")
-        return "请描述您的情况。"
+# 删除本地的get_question函数，使用PromptParser中的函数
+get_question = PromptParser.get_question
 
 @app.route('/')
 def index():
@@ -125,7 +115,7 @@ async def process_message(data):
                     'content': question
                 })
             else:
-                print("所有条目评估完成")
+                print("所有条目评估完��")
                 framework.save_assessment_result()
                 
                 socketio.emit('message', {
