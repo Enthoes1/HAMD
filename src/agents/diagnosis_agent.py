@@ -2,11 +2,18 @@ from src.core.assessment_framework import AssessmentFramework
 from src.utils.prompt_parser import PromptParser
 
 class DiagnosisAgent:
-    def __init__(self, prompt_file_path, model_config):
-        """初始化问诊Agent"""
+    def __init__(self, prompt_file_path, model_config, patient_agent=None):
+        """初始化问诊Agent
+        
+        Args:
+            prompt_file_path: 提示词文件路径
+            model_config: 模型配置
+            patient_agent: 病人Agent的引用，用于在切换条目时清空历史
+        """
         self.framework = AssessmentFramework(prompt_file_path, model_config)
         self.current_question = None
         self.conversation_history = {}  # 每个条目的对话历史
+        self.patient_agent = patient_agent
         
     def set_patient_info(self, patient_info):
         """设置病人信息，这是保存进度所必需的"""
@@ -52,6 +59,10 @@ class DiagnosisAgent:
                         # 切换到下一个条目
                         next_item = self.framework.next_item()
                         if next_item:
+                            # 如果有病人Agent，清空其当前条目历史
+                            if self.patient_agent:
+                                self.patient_agent.clear_current_item_history()
+                                
                             # 自动获取下一个问题
                             question = self.framework.prompt_parser.get_question(next_item.prompt)
                             self.current_question = question
@@ -69,7 +80,7 @@ class DiagnosisAgent:
                         })
                         self.conversation_history[current_item.item_id] = history
                         return result.get('data', '')
-                
+                        
                 return result
                     
         except Exception as e:

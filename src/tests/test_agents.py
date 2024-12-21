@@ -38,11 +38,11 @@ async def run_test():
                 current_round += 1
                 print(f"\n=== ��始第 {current_round}/{max_rounds} 轮评估 ===\n")
                 
-                # 创建病人Agent
-                patient = PatientAgent(f'AI001', model_config)
+                # 创建病人Agent，使用模式2（只使用当前条目历史）
+                patient = PatientAgent(f'AI001', model_config, mode=2)
                 
-                # 创建问诊Agent
-                diagnosis = DiagnosisAgent(prompt_file_path, model_config)
+                # 创建问诊Agent，传入病人Agent的引用
+                diagnosis = DiagnosisAgent(prompt_file_path, model_config, patient_agent=patient)
                 diagnosis.framework.initialize_items_from_prompts()
                 
                 # 设置病人信息
@@ -72,7 +72,7 @@ async def run_test():
                 try:
                     results_dir = diagnosis.framework.results_dir
                     latest_result = max([f for f in os.listdir(results_dir) if f.startswith('assessment_')], 
-                                      key=lambda x: os.path.getctime(os.path.join(results_dir, x)))
+                                     key=lambda x: os.path.getctime(os.path.join(results_dir, x)))
                     result_path = os.path.join(results_dir, latest_result)
                     print(f"结果文件: {result_path}")
                     
@@ -86,31 +86,33 @@ async def run_test():
                         print("\n评分详情:")
                         for item_id, score in result_data['scores'].items():
                             print(f"条目 {item_id}: {score}")
-                        print(f"\n总计评分项目数: {len(result_data['scores'])}")
+                        print(f"\n总计评分项目��: {len(result_data['scores'])}")
+                        
+                        # 打印token统计
+                        token_stats = patient.get_token_stats()
+                        print("\nToken使用统计:")
+                        print(f"- 模式: {'全部历史' if token_stats['mode'] == 1 else '仅当前条目'}")
+                        print(f"- 提示词tokens: {token_stats['prompt_tokens']}")
+                        print(f"- 回复tokens: {token_stats['completion_tokens']}")
+                        print(f"- 总计tokens: {token_stats['total_tokens']}")
+                        print(f"- 平均每条目tokens: {token_stats['total_tokens'] / len(result_data['scores']):.1f}")
                         
                 except Exception as e:
                     print(f"\n读取评估结果时出错: {str(e)}")
-                
-                # 重置连续错误计数
-                consecutive_errors = 0
-                
-            except Exception as e:
-                consecutive_errors += 1
-                print(f"\n[错误] {str(e)}")
-                
-                if consecutive_errors >= max_consecutive_errors:
-                    print(f"\n=== 连续出现{max_consecutive_errors}次错误，终止测试 ===")
-                    break
                     
-                print(f"尝试开始下一轮... (错误次数: {consecutive_errors}/{max_consecutive_errors})")
+            except Exception as e:
+                print(f"评估过程出错: {str(e)}")
+                consecutive_errors += 1
+                if consecutive_errors >= max_consecutive_errors:
+                    print(f"连续错误次数达到{max_consecutive_errors}次，终止评估")
+                    break
                 continue
-        
-        print("\n=== 测试完成 ===")
-        
+            
+            consecutive_errors = 0  # 重置连续错误计数
+            
     except Exception as e:
-        print(f"\n测试过程中出错: {str(e)}")
-        import traceback
-        print(traceback.format_exc())
+        print(f"测试运行出错: {str(e)}")
+        raise
 
 if __name__ == "__main__":
     # 运行测试

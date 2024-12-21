@@ -27,10 +27,10 @@ class LLMHandler:
             # 添加历史对话（不包括当前用户输入）
             if conversation_history:
                 for entry in conversation_history:
-                    if entry.get('user'):
-                        messages.append({'role': 'user', 'content': entry['user']})
-                    if entry.get('assistant'):
-                        messages.append({'role': 'assistant', 'content': entry['assistant']})
+                    if entry.get('role') == 'patient':
+                        messages.append({'role': 'user', 'content': entry['content']})
+                    elif entry.get('role') == 'assistant':
+                        messages.append({'role': 'assistant', 'content': entry['content']})
             
             # 添加当前用户输入
             messages.append({'role': 'user', 'content': user_response})
@@ -69,10 +69,16 @@ class LLMHandler:
                 # 检查响应中是否包含分数相关内容
                 score_keywords = ['0分', '1分', '2分', '3分', '4分']
                 if any(keyword in response for keyword in score_keywords):
-                    # 如果包含分数相关内容，重新发送请求
+                    # 将包含分数的响应加入到历史对话中
                     messages.append({
-                        'role': 'system', 
-                        'content': "请不要与患者讨论分数等内容，如果根据现有对话能够判断分数，则直接输出json；如果不能，请继续追问。"
+                        'role': 'assistant',
+                        'content': response
+                    })
+                    
+                    # 添加提示不要讨论分数的消息
+                    messages.append({
+                        'role': 'user', 
+                        'content': "画外音：请不要与患者讨论分数等内容，如果根据现有对话能够判断分数，则直接输出json；如果不能，请继续追问。"
                     })
                     
                     # 再次调用LLM
@@ -95,10 +101,20 @@ class LLMHandler:
                             'show_response': False
                         }
                     else:
-                        return {'type': 'message', 'data': new_response, 'show_response': True}
+                        return {
+                            'type': 'message', 
+                            'data': new_response, 
+                            'raw_response': new_response,  # 添加原始响应
+                            'show_response': True
+                        }
                 else:
                     # 如果不包含分数相关内容，返回原始响应
-                    return {'type': 'message', 'data': response, 'show_response': True}
+                    return {
+                        'type': 'message', 
+                        'data': response, 
+                        'raw_response': response,  # 添加原始响应
+                        'show_response': True
+                    }
                     
         except Exception as e:
             print(f"LLM调用出错: {str(e)}")
@@ -135,8 +151,8 @@ class LLMHandler:
                         json_str = response[start:end]
                         score_data = json.loads(json_str)
                         
-                        # 验证评分数据的格式
-                        if len(score_data) == 1 and all(isinstance(k, str) and isinstance(v, (int, float)) for k, v in score_data.items()):
+                        # 验证评分数据的格式：允许多个hamd评分
+                        if all(isinstance(k, str) and isinstance(v, (int, float)) and k.startswith('hamd') for k, v in score_data.items()):
                             json_objects.append(score_data)
                         else:
                             print(f"无效的评分格式: {json_str}")
@@ -153,9 +169,12 @@ class LLMHandler:
                 # 如果只有一个评分对象，直接返回
                 if len(json_objects) == 1:
                     return json_objects[0]
-                # 如果有多个评分对象，返回数组
+                # 如果有多个评分对象，合并它们
                 else:
-                    return json_objects
+                    merged_scores = {}
+                    for score_dict in json_objects:
+                        merged_scores.update(score_dict)
+                    return merged_scores
             
             return None
             

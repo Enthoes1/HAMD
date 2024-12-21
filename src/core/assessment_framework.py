@@ -15,7 +15,7 @@ class AssessmentFramework:
     def __init__(self, prompt_file_path, model_config):
         self.items = []
         self.current_item_index = 0
-        self.scores = {}  # 存储评分
+        self.scores = {}  # 存储评分，使用hamd1-hamd24格式
         self.score_history = {}  # 评分历史
         self.conversation_history = {}  # 存储每个条目的对话历史
         self.patient_info = {}  # 存储患者基本信息
@@ -63,14 +63,21 @@ class AssessmentFramework:
             if not self.conversation_history[current_item.item_id]:
                 self.conversation_history[current_item.item_id] = []
             
-            # 存储对话历史，使用原始响应
+            # 存储用���回应
             history_entry = {
-                'user': user_response,
-                'llm_response': result.get('raw_response', result['data']),  # 优先使用原始响应
+                'content': user_response,
+                'role': 'patient'
+            }
+            self.conversation_history[current_item.item_id].append(history_entry)
+            
+            # 存储LLM响应
+            llm_entry = {
+                'content': result.get('raw_response', result['data']),  # 优先使用原始响应
+                'role': 'assistant',
                 'show_response': result.get('show_response', True),
                 'type': result['type']
             }
-            self.conversation_history[current_item.item_id].append(history_entry)
+            self.conversation_history[current_item.item_id].append(llm_entry)
             
             if result['type'] == 'score':
                 # 获取评分数据
@@ -78,15 +85,16 @@ class AssessmentFramework:
                 if not isinstance(scores, list):
                     scores = [scores]
                     
-                # 更新评分
+                # 更新评分，直接使用hamd格式
                 for score_dict in scores:
-                    for label, value in score_dict.items():
-                        self.scores[label] = value
+                    for hamd_label, value in score_dict.items():
+                        # 直接使用hamd格式的标签
+                        self.scores[hamd_label] = value
                         
                         # 添加到评分历史
-                        if label not in self.score_history:
-                            self.score_history[label] = []
-                        self.score_history[label].append({
+                        if hamd_label not in self.score_history:
+                            self.score_history[hamd_label] = []
+                        self.score_history[hamd_label].append({
                             'score': value,
                             'timestamp': datetime.now().isoformat()
                         })
@@ -128,7 +136,8 @@ class AssessmentFramework:
             }
             
             with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(assessment_data, f, ensure_ascii=False, indent=2)
+                # 使用ensure_ascii=False确保不对非ASCII字符进行转义
+                json.dump(assessment_data, f, ensure_ascii=False, indent=2, separators=(',', ': '))
                 
             print(f"评估结果已保存到: {filepath}")
             
@@ -164,7 +173,8 @@ class AssessmentFramework:
             filepath = os.path.join(self.progress_dir, filename)
             
             with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(progress_data, f, ensure_ascii=False, indent=2)
+                # 使用ensure_ascii=False确保不对非ASCII字符进行转义
+                json.dump(progress_data, f, ensure_ascii=False, indent=2, separators=(',', ': '))
                 
             print(f"进度已保存: {filepath}")
             return True
