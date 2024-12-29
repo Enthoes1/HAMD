@@ -19,6 +19,7 @@ class AssessmentFramework:
         self.score_history = {}  # 评分历史
         self.conversation_history = {}  # 存储每个条目的对话历史
         self.patient_info = {}  # 存储患者基本信息
+        self.insight_item = None  # 存储自知力评估项目
         
         # 创建评分结果保存目录
         self.results_dir = os.path.join(os.path.dirname(prompt_file_path), "assessment_results")
@@ -31,7 +32,8 @@ class AssessmentFramework:
         
         # 初始化提示词解析器和LLM处理器
         self.prompt_parser = PromptParser(prompt_file_path)
-        self.prompt_parser.parse_file()
+        # 按数字排序解析提示词
+        self.prompt_parser.parse_file(sort_by_number=False)
         self.llm_handler = LLMHandler(model_config)
         self.speech_handler = SpeechHandler()
         
@@ -42,9 +44,18 @@ class AssessmentFramework:
                 item_id=label,
                 prompt=prompt
             )
+            # 如果是自知力评估项目（hamd17），单独存储
+            if "hamd17" in prompt:
+                self.insight_item = item
+                continue
             self.add_item(item)
             self.conversation_history[label] = []
         
+        # 如果存在自知力评估项目，将其添加到列表末尾
+        if self.insight_item:
+            self.conversation_history[self.insight_item.item_id] = []
+            self.add_item(self.insight_item)
+            
     def add_item(self, item):
         self.items.append(item)
         
@@ -63,7 +74,7 @@ class AssessmentFramework:
             if not self.conversation_history[current_item.item_id]:
                 self.conversation_history[current_item.item_id] = []
             
-            # 存储用���回应
+            # 存储用户回应
             history_entry = {
                 'content': user_response,
                 'role': 'patient'
@@ -107,8 +118,26 @@ class AssessmentFramework:
         
     def next_item(self):
         if self.current_item_index < len(self.items) - 1:
+            next_item = self.items[self.current_item_index + 1]
+            
+            # 如果下一个是自知力评估项目，先检查总分
+            if "hamd17" in next_item.prompt:
+                # 计算除hamd17外的所有评分总和
+                total_score = sum(score for label, score in self.scores.items() if label != "hamd17")
+                
+                # 如果总分小于等于8分，直接设置hamd17为0分并跳过
+                if total_score <= 8:
+                    self.scores["hamd17"] = 0
+                    if "hamd17" not in self.score_history:
+                        self.score_history["hamd17"] = []
+                    self.score_history["hamd17"].append({
+                        'score': 0,
+                        'timestamp': datetime.now().isoformat()
+                    })
+                    return None
+                    
             self.current_item_index += 1
-            return self.items[self.current_item_index]
+            return next_item
         return None
         
     def get_conversation_history(self, item_id):

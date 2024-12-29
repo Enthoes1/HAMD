@@ -1,22 +1,45 @@
+from collections import OrderedDict
+
 class PromptParser:
     def __init__(self, file_path):
         self.file_path = file_path
-        self.prompts = {}
+        self.prompts = OrderedDict()
 
-    def parse_file(self):
+    def parse_file(self, sort_by_number=False):
+        """
+        解析提示词文件
+        
+        Args:
+            sort_by_number: 是否按照label后的数字排序。如果为True，则按数字排序；
+                          如果为False，则按文件中的顺序排序。
+        """
         try:
             with open(self.file_path, 'r', encoding='utf-8') as file:
                 content = file.read()
                 sections = content.split('#label#')
                 
+                # 收集所有section
+                section_data = []
                 for section in sections:
                     if section.strip():
-                        # 获取label和提示词内容
                         lines = section.strip().split('\n', 1)
                         if len(lines) == 2:
                             label = lines[0].strip()
                             prompt_content = lines[1].strip()
-                            self.prompts[label] = prompt_content
+                            section_data.append((label, prompt_content))
+                
+                # 如果需要按数字排序
+                if sort_by_number:
+                    def get_number(label):
+                        import re
+                        match = re.search(r'\d+', label)
+                        return int(match.group()) if match else float('inf')
+                    section_data.sort(key=lambda x: get_number(x[0]))
+                
+                # 将排序后的数据存入OrderedDict
+                self.prompts.clear()
+                for label, prompt_content in section_data:
+                    self.prompts[label] = prompt_content
                             
         except FileNotFoundError:
             raise Exception(f"提示词文件未找到: {self.file_path}")
