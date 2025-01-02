@@ -1,22 +1,43 @@
 import os
 import sys
 import warnings
+from functools import wraps
 
 # 添加项目根目录到 Python 路径
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+sys.path.append(project_root)
 
-from flask import Flask, render_template
+from flask import Flask, render_template, request, Response
 from flask_socketio import emit
 import asyncio
-from core.assessment_framework import AssessmentFramework
-from utils.globals import socketio, init_socketio
-from utils.prompt_parser import PromptParser
+from src.core.assessment_framework import AssessmentFramework
+from src.utils.globals import socketio, init_socketio
+from src.utils.prompt_parser import PromptParser
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
-init_socketio(app)
+
+# 添加认证配置
+def check_auth(username, password):
+    return username == "admin" and password == os.getenv('ACCESS_CODE', 'testcode')
+
+def authenticate():
+    return Response(
+        '请登录', 401,
+        {'WWW-Authenticate': 'Basic realm="Login Required"'}
+    )
+
+def requires_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not check_auth(auth.username, auth.password):
+            return authenticate()
+        return f(*args, **kwargs)
+    return decorated
 
 # 配置模型参数
 model_config = {
@@ -41,9 +62,13 @@ framework.initialize_items_from_prompts()
 # 删除本地的get_question函数，使用PromptParser中的函数
 get_question = PromptParser.get_question
 
+# 在主页路由上添加认证装饰器
 @app.route('/')
+@requires_auth
 def index():
     return render_template('index.html')
+
+init_socketio(app)
 
 @socketio.on('connect')
 def handle_connect():
@@ -115,7 +140,7 @@ async def process_message(data):
                     'content': question
                 })
             else:
-                print("所有条目评估完��")
+                print("所有条目评估完成")
                 framework.save_assessment_result()
                 
                 socketio.emit('message', {
@@ -217,4 +242,10 @@ def handle_patient_info(data):
         })
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True)
+    port = int(os.getenv('PORT', 7860))
+    host = os.getenv('HOST', '0.0.0.0')
+    socketio.run(app, 
+                host=host,
+                port=port,
+                debug=False,
+                allow_unsafe_werkzeug=True)
