@@ -3,7 +3,6 @@ from src.llm.llm_handler import LLMHandler
 import json
 import os
 from datetime import datetime
-from src.speech.speech_handler import SpeechHandler
 
 class AssessmentItem:
     def __init__(self, item_id, prompt):
@@ -35,7 +34,6 @@ class AssessmentFramework:
         # 按数字排序解析提示词
         self.prompt_parser.parse_file(sort_by_number=False)
         self.llm_handler = LLMHandler(model_config)
-        self.speech_handler = SpeechHandler()
         
     def initialize_items_from_prompts(self):
         """根据提示词文件初始化评估项目"""

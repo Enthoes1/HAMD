@@ -8,7 +8,6 @@
 - 实时WebSocket通信
 - 自动评分与进度保存  
 - 支持中断恢复
-- 语音交互（开发中）
 
 ## 项目结构
 
@@ -18,7 +17,6 @@
 │   ├── core/              # 核心模块
 │   ├── llm/               # LLM处理
 │   ├── utils/             # 工具类
-│   ├── speech/            # 语音模块
 │   └── templates/         # 前端页面
 └── assessment_results/    # 评估结果
 ```
@@ -26,13 +24,26 @@
 ## 快速开始
 
 1. 安装依赖
-bash
+```bash
 pip install -r requirements.txt
 ```
 
-2. 配置环境变量
+2. 配置API密钥
+在运行程序前，需要设置通义千问API密钥。可以通过以下两种方式之一进行配置：
+
+- 方式一：设置环境变量
 ```bash
 export DASHSCOPE_API_KEY=your_api_key
+```
+
+- 方式二：在代码中直接配置（仅用于开发测试）
+修改 `src/app.py` 中的 `model_config`：
+```python
+model_config = {
+    'api_key': 'your_api_key',  # 替换为您的API密钥
+    'base_url': "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    'model': 'qwen-plus'
+}
 ```
 
 3. 运行程序
@@ -41,7 +52,7 @@ python src/app.py
 ```
 
 4. 访问系统
-- 打开浏览器访问 http://localhost:5000
+- 打开浏览器访问 http://localhost:7860
 - 输入患者基本信息开始评估
 - 查看实时评估状态
 
@@ -63,15 +74,14 @@ python src/app.py
     "name": "张三"
   },
   "scores": {
-    "1": {"score": 2},
-    "2": {"score": 1}
+    "hamd1": 2,
+    "hamd2": 1
   }
 }
 ```
 
 ## 开发计划
 
-- 语音交互优化
 - 评估报告生成
 - 用户界面改进
 - 多模型支持

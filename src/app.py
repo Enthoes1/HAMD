@@ -115,7 +115,7 @@ async def process_message(data):
                     'content': question
                 })
             else:
-                print("所有条目评估完��")
+                print("所有条目评估完成")
                 framework.save_assessment_result()
                 
                 socketio.emit('message', {
