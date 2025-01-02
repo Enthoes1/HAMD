@@ -1,11 +1,12 @@
 import os
 import sys
 import warnings
+from functools import wraps
 
 # 添加项目根目录到 Python 路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flask import Flask, render_template
+from flask import Flask, render_template, request, session, redirect, url_for
 from flask_socketio import emit
 import asyncio
 from core.assessment_framework import AssessmentFramework
@@ -17,6 +18,13 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
 init_socketio(app)
+
+# 配置访问密码
+ACCESS_CODE = "hamd2024"  # 你可以修改这个密码
+
+def check_auth():
+    """检查用户是否已认证"""
+    return session.get('authenticated', False)
 
 # 配置模型参数
 model_config = {
@@ -43,11 +51,23 @@ get_question = PromptParser.get_question
 
 @app.route('/')
 def index():
+    if not check_auth():
+        return redirect(url_for('login'))
     return render_template('index.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        if request.form.get('password') == ACCESS_CODE:
+            session['authenticated'] = True
+            return redirect(url_for('index'))
+        return render_template('login.html', error="密码错误")
+    return render_template('login.html')
 
 @socketio.on('connect')
 def handle_connect():
-    pass
+    if not check_auth():
+        return False  # 拒绝未认证的WebSocket连接
 
 @socketio.on('user_input')
 def handle_message(data):
