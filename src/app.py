@@ -16,7 +16,7 @@ from utils.prompt_parser import PromptParser
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'secret!'
+app.config['SECRET_KEY'] = 'hamd2024_secure_key_!@#$%^&*()'
 init_socketio(app)
 
 # 配置访问密码
@@ -42,12 +42,16 @@ model_config = {
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 prompt_file_path = os.path.join(root_dir, "newprompt.txt")
 
-# 初始化评估框架
-framework = AssessmentFramework(prompt_file_path, model_config)
-framework.initialize_items_from_prompts()
+# 用户评估框架字典
+user_frameworks = {}
 
-# 删除本地的get_question函数，使用PromptParser中的函数
-get_question = PromptParser.get_question
+def get_framework(sid):
+    """获取或创建用户的评估框架"""
+    if sid not in user_frameworks:
+        framework = AssessmentFramework(prompt_file_path, model_config)
+        framework.initialize_items_from_prompts()
+        user_frameworks[sid] = framework
+    return user_frameworks[sid]
 
 @app.route('/')
 def index():
@@ -69,14 +73,86 @@ def handle_connect():
     if not check_auth():
         return False  # 拒绝未认证的WebSocket连接
 
+@socketio.on('disconnect')
+def handle_disconnect():
+    """清理用户的评估框架"""
+    sid = request.sid
+    if sid in user_frameworks:
+        # 保存最终结果
+        framework = user_frameworks[sid]
+        if framework.patient_info:
+            framework.save_assessment_result()
+        del user_frameworks[sid]
+
 @socketio.on('user_input')
 def handle_message(data):
     try:
+        framework = get_framework(request.sid)
+        current_item = framework.items[framework.current_item_index]
+        user_response = data['content']
+        sid = request.sid  # 保存当前的session id
+        
+        # 获取当前条目的问题
+        question = PromptParser.get_question(current_item.prompt)
+        
+        # 记录用户的回答
+        framework.conversation_history[current_item.item_id].append({
+            'user': user_response
+        })
+        
+        # 获取当前条目的历史对话
+        history = framework.conversation_history[current_item.item_id][:-1]
+        
+        async def process():
+            # 将问题作为参数传递给 process_response
+            result = await framework.process_response(user_response, history, question)
+            return result
+            
         def async_process():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            loop.run_until_complete(process_message(data))
+            result = loop.run_until_complete(process())
             loop.close()
+            
+            if result['type'] == 'score':
+                if not framework.save_progress():
+                    print("警告：评分后保存进度失败")
+                
+                next_item = framework.next_item()
+                if next_item:
+                    print(f"切换到下一题: {framework.current_item_index + 1}")
+                    if not framework.save_progress():
+                        print("警告：切换题目后保存进度失败")
+                    
+                    question = PromptParser.get_question(next_item.prompt)
+                    framework.conversation_history[next_item.item_id].append({
+                        'assistant': question
+                    })
+                    
+                    socketio.emit('message', {
+                        'type': 'message',
+                        'role': 'system',
+                        'content': question
+                    }, room=sid)  # 使用保存的sid
+                else:
+                    print("所有条目评估完成")
+                    framework.save_assessment_result()
+                    
+                    socketio.emit('message', {
+                        'type': 'assessment_complete',
+                        'content': '评估已完成，感谢您的参与！'
+                    }, room=sid)  # 使用保存的sid
+                    
+                    print(f"患者 {framework.patient_info['id']} 的评估已完成")
+                    print(f"总评分项目数: {len(framework.scores)}")
+                    
+            else:
+                if result.get('show_response', True):
+                    socketio.emit('message', {
+                        'type': 'message',
+                        'role': 'assistant',
+                        'content': result['data']
+                    }, room=sid)  # 使用保存的sid
         
         socketio.start_background_task(async_process)
         
@@ -88,83 +164,11 @@ def handle_message(data):
             'content': f"错误：{str(e)}"
         })
 
-async def process_message(data):
-    try:
-        current_item = framework.items[framework.current_item_index]
-        user_response = data['content']
-        
-        # 获取当前条目的问题
-        question = get_question(current_item.prompt)
-        
-        # 记录用户的回答
-        framework.conversation_history[current_item.item_id].append({
-            'user': user_response
-        })
-        
-        # 获取当前条目的历史对话
-        history = framework.conversation_history[current_item.item_id][:-1]
-        
-        # 将问题作为参数传递给 process_response
-        result = await framework.process_response(user_response, history, question)
-        
-        if result['type'] == 'score':
-            if not framework.save_progress():
-                print("警告：评分后保存进度失败")
-            
-            next_item = framework.next_item()
-            if next_item:
-                print(f"切换到下一题: {framework.current_item_index + 1}")
-                if not framework.save_progress():
-                    print("警告：切换题目后保存进度失败")
-                
-                socketio.emit('message', {
-                    'type': 'status',
-                    'current_item': f"第 {framework.current_item_index + 1} 题",
-                    'current_index': framework.current_item_index,
-                    'total_items': len(framework.items)
-                })
-                
-                question = get_question(next_item.prompt)
-                framework.conversation_history[next_item.item_id].append({
-                    'assistant': question
-                })
-                
-                socketio.emit('message', {
-                    'type': 'message',
-                    'role': 'system',
-                    'content': question
-                })
-            else:
-                print("所有条目评估完成")
-                framework.save_assessment_result()
-                
-                socketio.emit('message', {
-                    'type': 'assessment_complete',
-                    'content': '评估已完成，感谢您的参与！'
-                })
-                
-                print(f"患者 {framework.patient_info['id']} 的评估已完成")
-                print(f"总评分项目数: {len(framework.scores)}")
-                
-        else:
-            if result.get('show_response', True):
-                socketio.emit('message', {
-                    'type': 'message',
-                    'role': 'assistant',
-                    'content': result['data']
-                })
-                
-    except Exception as e:
-        print(f"异步处理错误: {str(e)}")
-        socketio.emit('message', {
-            'type': 'message',
-            'role': 'system',
-            'content': f"错误：{str(e)}"
-        })
-
 @socketio.on('submit_patient_info')
 def handle_patient_info(data):
     try:
+        framework = get_framework(request.sid)
+        
         if 'id' not in data:
             print("错误：患者信息中缺少ID")
             emit('message', {
@@ -201,7 +205,7 @@ def handle_patient_info(data):
                     })
             
             if not history:
-                question = get_question(current_item.prompt)
+                question = PromptParser.get_question(current_item.prompt)
                 emit('message', {
                     'type': 'message',
                     'role': 'system',
@@ -221,7 +225,7 @@ def handle_patient_info(data):
                 'total_items': len(framework.items)
             })
             
-            question = get_question(current_item.prompt)
+            question = PromptParser.get_question(current_item.prompt)
             emit('message', {
                 'type': 'message',
                 'role': 'system',
@@ -237,4 +241,4 @@ def handle_patient_info(data):
         })
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)

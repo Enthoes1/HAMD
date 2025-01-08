@@ -151,14 +151,6 @@
             background-color: #0056b3;
         }
 
-        .status {
-            text-align: center;
-            padding: 0.5rem;
-            background-color: #e9ecef;
-            border-radius: 4px;
-            margin-bottom: 1rem;
-        }
-
         @media (max-width: 768px) {
             .message {
                 max-width: 90%;
@@ -217,6 +209,15 @@
         @keyframes typing {
             0%, 100% { transform: translateY(0); }
             50% { transform: translateY(-5px); }
+        }
+
+        .status {
+            display: none;  /* 隐藏状态显示 */
+            text-align: center;
+            padding: 0.5rem;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            margin-bottom: 1rem;
         }
     </style>
 </head>
@@ -285,6 +286,7 @@
             hideTypingIndicator();
             
             if (data.type === 'status') {
+                // 仍然创建状态元素，但不显示
                 const statusDiv = document.createElement('div');
                 statusDiv.className = 'status';
                 statusDiv.textContent = data.current_item;
@@ -293,7 +295,7 @@
                 addMessage(data.content, 'system');
                 userInput.disabled = true;
                 sendButton.disabled = true;
-            } else {
+            } else if (data.type === 'message') {
                 addMessage(data.content, data.role);
             }
             
