@@ -380,6 +380,21 @@
     </div>
 
     <script>
+        // 检查患者信息和认证状态
+        const patientInfo = JSON.parse(localStorage.getItem('patientInfo'));
+        if (!patientInfo) {
+            window.location.href = '/login';
+        }
+
+        // 添加错误处理函数
+        function handleAuthError(response) {
+            if (response.status === 401) {
+                window.location.href = '/login';
+                return null;
+            }
+            return response.json();
+        }
+
         document.getElementById('phq9-form').addEventListener('submit', function(e) {
             e.preventDefault();
             
@@ -411,24 +426,32 @@
             document.getElementById('result').style.display = 'block';
 
             // 发送结果到服务器
-            const patientId = localStorage.getItem('patientId');
-            if (patientId) {
-                fetch('/save_phq9', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        patient_id: patientId,
-                        total_score: totalScore,
-                        interpretation: interpretation,
-                        answers: Array.from({length: 9}, (_, i) => ({
-                            question: i + 1,
-                            score: parseInt(document.querySelector(`input[name="q${i+1}"]:checked`).value)
-                        }))
-                    })
-                });
-            }
+            fetch('/save_phq9', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    patient_id: patientInfo.id,
+                    patient_name: patientInfo.name,
+                    total_score: totalScore,
+                    interpretation: interpretation,
+                    answers: Array.from({length: 9}, (_, i) => ({
+                        question: i + 1,
+                        score: parseInt(document.querySelector(`input[name="q${i+1}"]:checked`).value)
+                    }))
+                })
+            })
+            .then(handleAuthError)
+            .then(data => {
+                if (data && data.error) {
+                    alert('保存失败：' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('保存失败，请重试');
+            });
         });
     </script>
 </body>

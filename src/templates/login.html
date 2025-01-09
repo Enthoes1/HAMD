@@ -10,10 +10,12 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            min-height: 100vh;
             margin: 0;
             background-color: #f5f5f5;
+            padding: 20px;
         }
+        
         .login-container {
             background: white;
             padding: 2rem;
@@ -22,16 +24,27 @@
             width: 100%;
             max-width: 400px;
         }
+        
         .form-group {
             margin-bottom: 1rem;
         }
-        input[type="password"] {
+        
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #333;
+            font-weight: 500;
+        }
+        
+        input, select {
             width: 100%;
             padding: 0.5rem;
             border: 1px solid #ddd;
             border-radius: 4px;
-            margin-top: 0.5rem;
+            margin-top: 0.25rem;
+            font-size: 16px;
         }
+        
         button {
             width: 100%;
             padding: 0.75rem;
@@ -40,34 +53,251 @@
             border: none;
             border-radius: 4px;
             cursor: pointer;
+            font-size: 16px;
+            margin-top: 1rem;
         }
+        
         button:hover {
             background-color: #0056b3;
         }
+        
         .error {
             color: red;
             margin-bottom: 1rem;
+            text-align: center;
         }
+        
         h1 {
             text-align: center;
             color: #333;
             margin-bottom: 2rem;
         }
+
+        .form-section {
+            display: none;
+        }
+
+        .form-section.active {
+            display: block;
+        }
+
+        .progress-bar {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2rem;
+            position: relative;
+        }
+
+        .progress-step {
+            flex: 1;
+            text-align: center;
+            color: #999;
+            position: relative;
+            padding: 0 10px;
+        }
+
+        .progress-step.active {
+            color: #007bff;
+            font-weight: bold;
+        }
+
+        .progress-step::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            bottom: -10px;
+            transform: translateX(-50%);
+            width: 10px;
+            height: 10px;
+            background-color: #999;
+            border-radius: 50%;
+        }
+
+        .progress-step.active::after {
+            background-color: #007bff;
+        }
+
+        .progress-line {
+            position: absolute;
+            bottom: -5px;
+            left: 0;
+            height: 2px;
+            background-color: #ddd;
+            width: 100%;
+            z-index: -1;
+        }
+
+        .choice-buttons {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .choice-buttons button {
+            flex: 1;
+            margin-top: 0;
+        }
+
+        .choice-description {
+            margin-top: 1rem;
+            padding: 1rem;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            color: #666;
+        }
     </style>
 </head>
 <body>
     <div class="login-container">
-        <h1>HAMD评估系统</h1>
-        <form method="POST">
-            {% if error %}
-            <div class="error">{{ error }}</div>
-            {% endif %}
+        <div class="progress-bar">
+            <div class="progress-line"></div>
+            <div class="progress-step active" id="step1">访问验证</div>
+            <div class="progress-step" id="step2">评估选择</div>
+            <div class="progress-step" id="step3">患者信息</div>
+        </div>
+
+        <div class="form-section active" id="login-section">
+            <h1>HAMD评估系统</h1>
+            <div class="error" style="display: none;"></div>
             <div class="form-group">
                 <label for="password">请输入访问密码：</label>
                 <input type="password" id="password" name="password" required>
             </div>
-            <button type="submit">登录</button>
-        </form>
+            <button type="button" onclick="verifyPassword()">下一步</button>
+        </div>
+
+        <div class="form-section" id="choice-section">
+            <h1>评估选择</h1>
+            <div class="choice-buttons">
+                <button onclick="continueAssessment()">继续评估</button>
+                <button onclick="startNewAssessment()">新的评估</button>
+            </div>
+            <div class="choice-description">
+                <p><strong>继续评估：</strong>如果您之前有未完成的评估，选择此项可以继续上次的进度。</p>
+                <p><strong>新的评估：</strong>开始一个全新的评估，之前的进度将被清除。</p>
+            </div>
+        </div>
+
+        <div class="form-section" id="patient-section">
+            <h1>患者基本信息</h1>
+            <div class="form-group">
+                <label for="patient-id">患者编号</label>
+                <input type="text" id="patient-id" required>
+            </div>
+            <div class="form-group">
+                <label for="patient-name">姓名</label>
+                <input type="text" id="patient-name" required>
+            </div>
+            <div class="form-group">
+                <label for="patient-gender">性别</label>
+                <select id="patient-gender" required>
+                    <option value="">请选择</option>
+                    <option value="男">男</option>
+                    <option value="女">女</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="patient-age">年龄</label>
+                <input type="number" id="patient-age" min="0" max="120" required>
+            </div>
+            <button type="button" onclick="submitPatientInfo()">开始评估</button>
+        </div>
     </div>
+
+    <script>
+        function verifyPassword() {
+            const password = document.getElementById('password').value;
+            const errorDiv = document.querySelector('.error');
+            
+            fetch('/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `password=${encodeURIComponent(password)}`
+            })
+            .then(response => response.text())
+            .then(result => {
+                if (result === 'success') {
+                    // 切换到评估选择界面
+                    document.getElementById('login-section').classList.remove('active');
+                    document.getElementById('choice-section').classList.add('active');
+                    document.getElementById('step1').classList.remove('active');
+                    document.getElementById('step2').classList.add('active');
+                } else {
+                    errorDiv.textContent = '密码错误';
+                    errorDiv.style.display = 'block';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                errorDiv.textContent = '登录失败，请重试';
+                errorDiv.style.display = 'block';
+            });
+        }
+
+        function continueAssessment() {
+            // 检查是否有保存的患者信息
+            const savedInfo = localStorage.getItem('patientInfo');
+            if (savedInfo) {
+                // 直接跳转到主页面
+                window.location.href = '/';
+            } else {
+                alert('没有找到保存的评估记录，请开始新的评估。');
+                startNewAssessment();
+            }
+        }
+
+        function startNewAssessment() {
+            // 清除之前的数据
+            localStorage.clear();
+            
+            // 切换到患者信息表单
+            document.getElementById('choice-section').classList.remove('active');
+            document.getElementById('patient-section').classList.add('active');
+            document.getElementById('step2').classList.remove('active');
+            document.getElementById('step3').classList.add('active');
+        }
+
+        function submitPatientInfo() {
+            const patientId = document.getElementById('patient-id').value;
+            const patientName = document.getElementById('patient-name').value;
+            const patientGender = document.getElementById('patient-gender').value;
+            const patientAge = document.getElementById('patient-age').value;
+
+            // 验证所有字段
+            if (!patientId || !patientName || !patientGender || !patientAge) {
+                alert('请填写所有患者信息');
+                return;
+            }
+
+            // 验证年龄范围
+            if (patientAge < 0 || patientAge > 120) {
+                alert('请输入有效的年龄（0-120岁）');
+                return;
+            }
+
+            // 存储患者信息
+            const patientInfo = {
+                id: patientId,
+                name: patientName,
+                gender: patientGender,
+                age: parseInt(patientAge)
+            };
+            localStorage.setItem('patientInfo', JSON.stringify(patientInfo));
+
+            // 跳转到主页面
+            window.location.href = '/';
+        }
+
+        // 添加回车键提交功能
+        document.getElementById('password').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                verifyPassword();
+            }
+        });
+    </script>
 </body>
 </html> 

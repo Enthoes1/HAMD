@@ -69,6 +69,9 @@ def phq9():
 
 @app.route('/save_phq9', methods=['POST'])
 def save_phq9():
+    if not check_auth():
+        return jsonify({'error': '未授权访问'}), 401
+        
     try:
         data = request.get_json()
         patient_id = data.get('patient_id')
@@ -98,17 +101,22 @@ def save_phq9():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    # 如果已经登录，清除session，确保重新登录
+    if request.method == 'GET':
+        session.clear()
+        
     if request.method == 'POST':
         if request.form.get('password') == ACCESS_CODE:
             session['authenticated'] = True
-            return redirect(url_for('index'))
-        return render_template('login.html', error="密码错误")
+            return 'success'
+        return 'error'
     return render_template('login.html')
 
 @socketio.on('connect')
 def handle_connect():
     if not check_auth():
         return False  # 拒绝未认证的WebSocket连接
+    return True
 
 @socketio.on('disconnect')
 def handle_disconnect():
