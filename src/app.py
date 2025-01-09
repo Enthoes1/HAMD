@@ -2,11 +2,13 @@ import os
 import sys
 import warnings
 from functools import wraps
+from datetime import datetime
+import json
 
 # 添加项目根目录到 Python 路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flask import Flask, render_template, request, session, redirect, url_for
+from flask import Flask, render_template, request, session, redirect, url_for, jsonify
 from flask_socketio import emit
 import asyncio
 from core.assessment_framework import AssessmentFramework
@@ -58,6 +60,41 @@ def index():
     if not check_auth():
         return redirect(url_for('login'))
     return render_template('index.html')
+
+@app.route('/phq9')
+def phq9():
+    if not check_auth():
+        return redirect(url_for('login'))
+    return render_template('phq9.html')
+
+@app.route('/save_phq9', methods=['POST'])
+def save_phq9():
+    try:
+        data = request.get_json()
+        patient_id = data.get('patient_id')
+        
+        if not patient_id:
+            return jsonify({'error': '缺少患者ID'}), 400
+            
+        # 创建PHQ9结果保存目录
+        phq9_dir = os.path.join(os.path.dirname(prompt_file_path), "phq9_results")
+        if not os.path.exists(phq9_dir):
+            os.makedirs(phq9_dir)
+            
+        # 生成文件名
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"phq9_{patient_id}_{timestamp}.json"
+        filepath = os.path.join(phq9_dir, filename)
+        
+        # 保存结果
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            
+        return jsonify({'success': True, 'message': '评估结果已保存'})
+        
+    except Exception as e:
+        print(f"保存PHQ9结果时出错: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -140,7 +177,7 @@ def handle_message(data):
                     
                     socketio.emit('message', {
                         'type': 'assessment_complete',
-                        'content': '评估已完成，感谢您的参与！'
+                        'content': '评估已完成，感谢您的参与！您现在可以点击右上角的"PHQ-9自评"按钮进行自评。'
                     }, room=sid)  # 使用保存的sid
                     
                     print(f"患者 {framework.patient_info['id']} 的评估已完成")

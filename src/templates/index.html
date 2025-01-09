@@ -31,6 +31,30 @@
             top: 0;
             width: 100%;
             z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            margin: 0;
+            flex-grow: 1;
+        }
+
+        .header-button {
+            background-color: white;
+            color: #007bff;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            text-decoration: none;
+            margin-left: 1rem;
+        }
+
+        .header-button:hover {
+            background-color: #f8f9fa;
         }
 
         .container {
@@ -224,6 +248,7 @@
 <body>
     <div class="header">
         <h1>HAMD评估系统</h1>
+        <a href="/phq9" class="header-button">PHQ-9自评</a>
     </div>
 
     <div class="container">
@@ -319,6 +344,9 @@
                 alert('请输入有效的年龄（0-120岁）');
                 return;
             }
+            
+            // 存储患者ID用于PHQ-9评估
+            localStorage.setItem('patientId', patientId);
             
             socket.emit('submit_patient_info', {
                 id: patientId,
