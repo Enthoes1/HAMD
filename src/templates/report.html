@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>评估报告 - HAMD评估系统</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            background-color: #f5f5f5;
+            color: #333;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .header {
+            background-color: #007bff;
+            color: white;
+            padding: 1rem;
+            text-align: center;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            margin: 0;
+            flex-grow: 1;
+        }
+
+        .header-button {
+            background-color: white;
+            color: #007bff;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            text-decoration: none;
+            margin-left: 1rem;
+        }
+
+        .header-button:hover {
+            background-color: #f8f9fa;
+        }
+
+        .section {
+            margin-bottom: 2rem;
+            padding: 1rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .section h2 {
+            color: #007bff;
+            margin-bottom: 1rem;
+        }
+
+        .patient-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .info-item {
+            padding: 0.5rem;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+
+        .info-label {
+            font-weight: bold;
+            color: #666;
+        }
+
+        .assessment-result {
+            margin-top: 1rem;
+        }
+
+        .score-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem;
+            border-bottom: 1px solid #eee;
+        }
+
+        .score-label {
+            font-weight: bold;
+        }
+
+        .score-value {
+            color: #007bff;
+            font-weight: bold;
+        }
+
+        .interpretation {
+            margin-top: 1rem;
+            padding: 1rem;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            color: #666;
+        }
+
+        .severity {
+            font-weight: bold;
+            color: #dc3545;
+        }
+
+        .timestamp {
+            color: #666;
+            font-size: 0.9rem;
+            text-align: right;
+            margin-top: 1rem;
+        }
+
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+
+            .container {
+                box-shadow: none;
+                padding: 0;
+            }
+
+            .header-button {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>评估报告</h1>
+            <nav>
+                <a href="/" class="header-button">返回评估</a>
+                <button onclick="window.print()" class="header-button">打印报告</button>
+            </nav>
+        </div>
+
+        <div class="section">
+            <h2>患者信息</h2>
+            <div class="patient-info">
+                <div class="info-item">
+                    <div class="info-label">患者编号</div>
+                    <div id="patient-id"></div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">姓名</div>
+                    <div id="patient-name"></div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">性别</div>
+                    <div id="patient-gender"></div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">年龄</div>
+                    <div id="patient-age"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>HAMD评估结果</h2>
+            <div class="assessment-result">
+                <div class="score-item">
+                    <span class="score-label">总分</span>
+                    <span class="score-value" id="hamd-total-score">-</span>
+                </div>
+                <div class="interpretation">
+                    <p>严重程度：<span class="severity" id="hamd-severity">-</span></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>PHQ-9评估结果</h2>
+            <div class="assessment-result">
+                <div class="score-item">
+                    <span class="score-label">总分</span>
+                    <span class="score-value" id="phq9-total-score">-</span>
+                </div>
+                <div class="interpretation">
+                    <p>严重程度：<span class="severity" id="phq9-severity">-</span></p>
+                    <p id="phq9-interpretation"></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="timestamp" id="report-time"></div>
+    </div>
+
+    <script>
+        // 检查患者信息和认证状态
+        const patientInfo = JSON.parse(localStorage.getItem('patientInfo'));
+        if (!patientInfo) {
+            window.location.href = '/login';
+        }
+
+        // 填充患者信息
+        document.getElementById('patient-id').textContent = patientInfo.id;
+        document.getElementById('patient-name').textContent = patientInfo.name;
+        document.getElementById('patient-gender').textContent = patientInfo.gender;
+        document.getElementById('patient-age').textContent = patientInfo.age;
+
+        // 获取评估结果
+        fetch('/get_report?patient_id=' + patientInfo.id)
+            .then(response => {
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+
+                // 填充HAMD结果
+                if (data.hamd) {
+                    document.getElementById('hamd-total-score').textContent = data.hamd.total_score;
+                    document.getElementById('hamd-severity').textContent = data.hamd.severity;
+                }
+
+                // 填充PHQ9结果
+                if (data.phq9) {
+                    document.getElementById('phq9-total-score').textContent = data.phq9.total_score;
+                    document.getElementById('phq9-severity').textContent = data.phq9.interpretation;
+                    document.getElementById('phq9-interpretation').textContent = data.phq9.details;
+                }
+
+                // 设置报告时间
+                document.getElementById('report-time').textContent = 
+                    `报告生成时间：${new Date().toLocaleString('zh-CN')}`;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('获取报告失败，请重试');
+            });
+    </script>
+</body>
+</html>

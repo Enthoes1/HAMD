@@ -322,6 +322,17 @@
                 addMessage(data.content, 'system');
                 userInput.disabled = true;
                 sendButton.disabled = true;
+                
+                // 添加查看报告的提示
+                const reportMessage = document.createElement('div');
+                reportMessage.className = 'message system';
+                reportMessage.innerHTML = `
+                    <p>HAMD评估已完成。您可以：</p>
+                    <p>1. <a href="/phq9" style="color: #007bff;">进行PHQ-9自评</a></p>
+                    <p>2. <a href="/report" style="color: #007bff;">查看评估报告</a></p>
+                `;
+                chatMessages.appendChild(reportMessage);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
             } else if (data.type === 'message') {
                 addMessage(data.content, data.role);
             }

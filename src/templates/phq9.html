@@ -452,6 +452,13 @@
             .then(data => {
                 if (data && data.error) {
                     alert('保存失败：' + data.error);
+                } else {
+                    // 添加查看报告的提示
+                    const viewReportButton = document.createElement('button');
+                    viewReportButton.textContent = '查看完整评估报告';
+                    viewReportButton.onclick = () => window.location.href = '/report';
+                    viewReportButton.style.marginTop = '20px';
+                    document.getElementById('result').appendChild(viewReportButton);
                 }
             })
             .catch(error => {
@@ -459,6 +466,52 @@
                 alert('保存失败，请重试');
             });
         });
+
+        function submitForm() {
+            const formData = new FormData(document.getElementById('phq9-form'));
+            const answers = {};
+            let totalScore = 0;
+            
+            for (let [key, value] of formData.entries()) {
+                answers[key] = parseInt(value);
+                totalScore += parseInt(value);
+            }
+            
+            const patientInfo = JSON.parse(localStorage.getItem('patientInfo'));
+            const result = {
+                patient_id: patientInfo.id,
+                answers: answers,
+                total_score: totalScore,
+                timestamp: new Date().toISOString()
+            };
+            
+            fetch('/submit_phq9', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(result)
+            })
+            .then(response => {
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+                // 直接跳转到报告页面
+                window.location.href = '/report';
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('提交失败，请重试');
+            });
+        }
     </script>
 </body>
 </html>

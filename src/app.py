@@ -285,5 +285,74 @@ def handle_patient_info(data):
             'content': f"错误：{str(e)}"
         })
 
+@app.route('/report')
+def report():
+    """显示评估报告页面"""
+    if not check_auth():
+        return redirect(url_for('login'))
+    return render_template('report.html')
+
+@app.route('/get_report')
+def get_report():
+    """获取评估报告数据"""
+    if not check_auth():
+        return jsonify({'error': '未授权访问'}), 401
+        
+    try:
+        # 从请求参数获取患者ID
+        patient_id = request.args.get('patient_id')
+        if not patient_id:
+            return jsonify({'error': '缺少患者ID'}), 400
+            
+        # 获取HAMD评估结果
+        hamd_result = None
+        assessment_dir = os.path.join(root_dir, "assessment_results")
+        if os.path.exists(assessment_dir):
+            # 获取最新的HAMD评估结果
+            hamd_files = [f for f in os.listdir(assessment_dir) if f.startswith(f"assessment_{patient_id}_")]
+            if hamd_files:
+                latest_hamd = max(hamd_files)
+                with open(os.path.join(assessment_dir, latest_hamd), 'r', encoding='utf-8') as f:
+                    result_data = json.load(f)
+                    hamd_result = {
+                        'total_score': result_data['total_score'],  # 直接使用文件中的总分
+                        'severity': get_hamd_severity(result_data['total_score'])
+                    }
+                    
+        # 获取PHQ9评估结果
+        phq9_result = None
+        phq9_dir = os.path.join(root_dir, "phq9_results")
+        if os.path.exists(phq9_dir):
+            # 获取最新的PHQ9评估结果
+            phq9_files = [f for f in os.listdir(phq9_dir) if f.startswith(f"phq9_{patient_id}_")]
+            if phq9_files:
+                latest_phq9 = max(phq9_files)
+                with open(os.path.join(phq9_dir, latest_phq9), 'r', encoding='utf-8') as f:
+                    phq9_result = json.load(f)
+                    
+        # 如果两个评估都未完成
+        if not hamd_result and not phq9_result:
+            return jsonify({'error': '未找到评估结果'}), 404
+            
+        return jsonify({
+            'hamd': hamd_result,
+            'phq9': phq9_result
+        })
+        
+    except Exception as e:
+        print(f"获取报告数据时出错: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+def get_hamd_severity(total_score):
+    """根据HAMD总分判断严重程度"""
+    if total_score < 7:
+        return "无抑郁"
+    elif total_score < 17:
+        return "轻度抑郁"
+    elif total_score < 24:
+        return "中度抑郁"
+    else:
+        return "重度抑郁"
+
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=5000, debug=True)
