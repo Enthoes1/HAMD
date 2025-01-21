@@ -101,16 +101,16 @@ def save_phq9():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    # 如果已经登录，清除session，确保重新登录
+    # 如果是GET请求，清除session，确保重新登录
     if request.method == 'GET':
         session.clear()
+        return render_template('login.html')
         
     if request.method == 'POST':
         if request.form.get('password') == ACCESS_CODE:
             session['authenticated'] = True
             return 'success'
         return 'error'
-    return render_template('login.html')
 
 @socketio.on('connect')
 def handle_connect():

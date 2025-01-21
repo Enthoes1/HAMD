@@ -380,9 +380,10 @@
     </div>
 
     <script>
-        // 检查患者信息和认证状态
+        // 检查患者信息
         const patientInfo = JSON.parse(localStorage.getItem('patientInfo'));
         if (!patientInfo) {
+            // 如果没有患者信息，重定向到登录页面
             window.location.href = '/login';
         }
 
@@ -390,9 +391,9 @@
         function handleAuthError(response) {
             if (response.status === 401) {
                 window.location.href = '/login';
-                return null;
+                return true;
             }
-            return response.json();
+            return false;
         }
 
         document.getElementById('phq9-form').addEventListener('submit', function(e) {
@@ -442,7 +443,12 @@
                     }))
                 })
             })
-            .then(handleAuthError)
+            .then(response => {
+                if (handleAuthError(response)) {
+                    return;
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data && data.error) {
                     alert('保存失败：' + data.error);
