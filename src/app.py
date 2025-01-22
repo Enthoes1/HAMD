@@ -22,11 +22,16 @@ app.config['SECRET_KEY'] = 'hamd2024_secure_key_!@#$%^&*()'
 init_socketio(app)
 
 # 配置访问密码
-ACCESS_CODE = "hamd2024"  # 你可以修改这个密码
+ACCESS_CODE = "hamd2024"  # 普通用户密码
+ADMIN_CODE = "hamd2024_admin"  # 管理员密码
 
 def check_auth():
     """检查用户是否已认证"""
     return session.get('authenticated', False)
+
+def check_admin():
+    """检查用户是否为管理员"""
+    return session.get('is_admin', False)
 
 # 配置模型参数
 model_config = {
@@ -57,8 +62,7 @@ def get_framework(sid):
 
 @app.route('/')
 def index():
-    if not check_auth():
-        return redirect(url_for('login'))
+    """显示主页面"""
     return render_template('index.html')
 
 @app.route('/phq9')
@@ -107,8 +111,14 @@ def login():
         return render_template('login.html')
         
     if request.method == 'POST':
-        if request.form.get('password') == ACCESS_CODE:
+        password = request.form.get('password')
+        if password == ADMIN_CODE:
             session['authenticated'] = True
+            session['is_admin'] = True
+            return 'success'
+        elif password == ACCESS_CODE:
+            session['authenticated'] = True
+            session['is_admin'] = False
             return 'success'
         return 'error'
 
@@ -288,59 +298,77 @@ def handle_patient_info(data):
 @app.route('/report')
 def report():
     """显示评估报告页面"""
-    if not check_auth():
-        return redirect(url_for('login'))
     return render_template('report.html')
 
 @app.route('/get_report')
 def get_report():
     """获取评估报告数据"""
-    if not check_auth():
-        return jsonify({'error': '未授权访问'}), 401
-        
     try:
-        # 从请求参数获取患者ID
         patient_id = request.args.get('patient_id')
+        assessment_id = request.args.get('assessment_id')
+        
         if not patient_id:
-            return jsonify({'error': '缺少患者ID'}), 400
+            return jsonify({'error': '未提供患者ID'}), 400
             
-        # 获取HAMD评估结果
-        hamd_result = None
-        assessment_dir = os.path.join(root_dir, "assessment_results")
-        if os.path.exists(assessment_dir):
-            # 获取最新的HAMD评估结果
-            hamd_files = [f for f in os.listdir(assessment_dir) if f.startswith(f"hamd_{patient_id}_")]
-            if hamd_files:
-                latest_hamd = max(hamd_files)
-                with open(os.path.join(assessment_dir, latest_hamd), 'r', encoding='utf-8') as f:
-                    result_data = json.load(f)
-                    hamd_result = {
-                        'total_score': result_data['total_score'],
-                        'severity': get_hamd_severity(result_data['total_score'])
-                    }
-                    
-        # 获取PHQ9评估结果
-        phq9_result = None
-        phq9_dir = os.path.join(root_dir, "phq9_results")
-        if os.path.exists(phq9_dir):
-            # 获取最新的PHQ9评估结果
-            phq9_files = [f for f in os.listdir(phq9_dir) if f.startswith(f"phq9_{patient_id}_")]
-            if phq9_files:
-                latest_phq9 = max(phq9_files)
-                with open(os.path.join(phq9_dir, latest_phq9), 'r', encoding='utf-8') as f:
-                    phq9_result = json.load(f)
-                    
-        # 如果两个评估都未完成
-        if not hamd_result and not phq9_result:
-            return jsonify({'error': '未找到评估结果'}), 404
+        # 获取评估结果目录
+        assessment_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assessment_results")
+        phq9_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "phq9_results")
             
-        return jsonify({
-            'hamd': hamd_result,
-            'phq9': phq9_result
-        })
+        # 如果提供了 assessment_id,查找特定评估
+        if assessment_id:
+            hamd_file = f"hamd_{patient_id}_{assessment_id}.json"
+            phq9_file = f"phq9_{patient_id}_{assessment_id}.json"
+        else:
+            # 否则查找最新评估
+            latest_timestamp = None
+            for filename in os.listdir(assessment_dir):
+                if filename.startswith(f'hamd_{patient_id}_'):
+                    timestamp = filename.split('_')[-1].split('.')[0]
+                    if not latest_timestamp or timestamp > latest_timestamp:
+                        latest_timestamp = timestamp
+            
+            if not latest_timestamp:
+                return jsonify({'error': '未找到评估记录'}), 404
+                
+            hamd_file = f"hamd_{patient_id}_{latest_timestamp}.json"
+            phq9_file = f"phq9_{patient_id}_{latest_timestamp}.json"
+        
+        # 读取 HAMD 结果
+        hamd_path = os.path.join(assessment_dir, hamd_file)
+        if not os.path.exists(hamd_path):
+            return jsonify({'error': '未找到HAMD评估记录'}), 404
+            
+        with open(hamd_path, 'r', encoding='utf-8') as f:
+            hamd_data = json.load(f)
+            
+        # 读取 PHQ-9 结果
+        phq9_path = os.path.join(phq9_dir, phq9_file)
+        phq9_data = None
+        if os.path.exists(phq9_path):
+            with open(phq9_path, 'r', encoding='utf-8') as f:
+                phq9_data = json.load(f)
+        
+        # 准备报告数据
+        report_data = {
+            'patient_info': hamd_data['patient_info'],
+            'hamd': {
+                'total_score': hamd_data['total_score'],
+                'severity': get_hamd_severity(hamd_data['total_score']),
+                'scores': hamd_data['scores']
+            }
+        }
+        
+        if phq9_data:
+            report_data['phq9'] = {
+                'total_score': phq9_data['total_score'],
+                'interpretation': phq9_data['interpretation'],
+                'answers': phq9_data['answers']
+            }
+        
+        return jsonify(report_data)
         
     except Exception as e:
-        print(f"获取报告数据时出错: {str(e)}")
+        print(f"获取报告数据失败: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 def get_hamd_severity(total_score):
@@ -353,6 +381,125 @@ def get_hamd_severity(total_score):
         return "中度抑郁"
     else:
         return "重度抑郁"
+
+@app.route('/admin')
+def admin():
+    """显示管理页面"""
+    if not check_auth() or not check_admin():
+        return redirect(url_for('login'))
+    return render_template('admin.html')
+
+@app.route('/get_all_patients')
+def get_all_patients():
+    """获取所有患者及其评估记录"""
+    if not check_auth() or not check_admin():
+        return jsonify({'error': '未授权访问'}), 401
+        
+    try:
+        patients = {}
+        
+        # 获取项目根目录
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        progress_dir = os.path.join(root_dir, "progress")
+        results_dir = os.path.join(root_dir, "assessment_results")
+        
+        # 确保目录存在
+        os.makedirs(progress_dir, exist_ok=True)
+        os.makedirs(results_dir, exist_ok=True)
+        
+        print(f"扫描目录: progress_dir={progress_dir}, results_dir={results_dir}")  # 添加调试日志
+        
+        # 读取进行中的评估
+        if os.path.exists(progress_dir):
+            for file in os.listdir(progress_dir):
+                if file.startswith('progress_'):
+                    patient_id = file.replace('progress_', '').replace('.json', '')
+                    with open(os.path.join(progress_dir, file), 'r', encoding='utf-8') as f:
+                        progress_data = json.load(f)
+                        if patient_id not in patients:
+                            patients[patient_id] = {
+                                'id': patient_id,
+                                'info': progress_data['patient_info'],
+                                'assessments': []
+                            }
+                        # 添加进行中的评估
+                        patients[patient_id]['assessments'].append({
+                            'id': 'current',
+                            'timestamp': datetime.now().isoformat(),
+                            'completed': False,
+                            'current_item': progress_data.get('current_item_index', 0) + 1  # 使用get方法避免键不存在的错误
+                        })
+        
+        # 读取已完成的评估
+        if os.path.exists(results_dir):
+            for file in os.listdir(results_dir):
+                if file.startswith('hamd_'):
+                    parts = file.replace('.json', '').split('_')
+                    patient_id = parts[1]
+                    timestamp = '_'.join(parts[2:])
+                    
+                    with open(os.path.join(results_dir, file), 'r', encoding='utf-8') as f:
+                        result_data = json.load(f)
+                        if patient_id not in patients:
+                            patients[patient_id] = {
+                                'id': patient_id,
+                                'info': result_data['patient_info'],
+                                'assessments': []
+                            }
+                        # 添加已完成的评估
+                        patients[patient_id]['assessments'].append({
+                            'id': timestamp,
+                            'timestamp': result_data['timestamp'],
+                            'completed': True,
+                            'total_score': result_data.get('total_score', 0)
+                        })
+        
+        # 将字典转换为列表并按ID排序
+        patient_list = list(patients.values())
+        patient_list.sort(key=lambda x: x['id'])
+        
+        return jsonify(patient_list)
+        
+    except Exception as e:
+        print(f"获取患者列表时出错: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/get_patient_info')
+def get_patient_info():
+    """获取指定患者的信息"""
+    try:
+        patient_id = request.args.get('patient_id')
+        if not patient_id:
+            return jsonify({'error': '缺少患者ID'}), 400
+            
+        # 首先尝试从进行中的评估获取信息
+        progress_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
+                                   "progress", f"progress_{patient_id}.json")
+        
+        if os.path.exists(progress_file):
+            with open(progress_file, 'r', encoding='utf-8') as f:
+                progress_data = json.load(f)
+                return jsonify(progress_data['patient_info'])
+                
+        # 如果没有进行中的评估，尝试从已完成的评估获取信息
+        results_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
+                                 "assessment_results")
+        
+        if os.path.exists(results_dir):
+            result_files = [f for f in os.listdir(results_dir) 
+                          if f.startswith(f'hamd_{patient_id}_')]
+            if result_files:
+                # 使用最新的评估结果
+                latest_file = max(result_files, key=lambda x: os.path.getctime(os.path.join(results_dir, x)))
+                with open(os.path.join(results_dir, latest_file), 'r', encoding='utf-8') as f:
+                    result_data = json.load(f)
+                    return jsonify(result_data['patient_info'])
+        
+        return jsonify({'error': '未找到患者信息'}), 404
+        
+    except Exception as e:
+        print(f"获取患者信息时出错: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=5000, debug=True)

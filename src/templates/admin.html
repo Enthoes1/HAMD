@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>评估管理系统</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            background-color: #f5f5f5;
+            color: #333;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .header {
+            background-color: #007bff;
+            color: white;
+            padding: 1rem;
+            text-align: center;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            margin: 0;
+        }
+
+        .header-button {
+            background-color: white;
+            color: #007bff;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            text-decoration: none;
+        }
+
+        .patient-list {
+            list-style: none;
+        }
+
+        .patient-item {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+            overflow: hidden;
+        }
+
+        .patient-header {
+            background-color: #f8f9fa;
+            padding: 1rem;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .patient-header:hover {
+            background-color: #e9ecef;
+        }
+
+        .patient-info {
+            flex: 1;
+        }
+
+        .patient-id {
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        .assessment-list {
+            display: none;
+            padding: 1rem;
+            background-color: white;
+        }
+
+        .assessment-item {
+            border: 1px solid #eee;
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+            padding: 0.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .assessment-info {
+            flex: 1;
+        }
+
+        .assessment-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .btn {
+            padding: 0.25rem 0.5rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+        }
+
+        .active .assessment-list {
+            display: block;
+        }
+
+        .new-assessment-btn {
+            background-color: #28a745;
+            color: white;
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>评估管理系统</h1>
+            <button onclick="startNewAssessment()" class="new-assessment-btn">新建评估</button>
+        </div>
+
+        <ul class="patient-list" id="patientList">
+            <!-- 患者列表将通过 JavaScript 动态加载 -->
+        </ul>
+    </div>
+
+    <script>
+        // 加载所有患者及其评估记录
+        function loadPatients() {
+            fetch('/get_all_patients')
+                .then(response => response.json())
+                .then(data => {
+                    const patientList = document.getElementById('patientList');
+                    patientList.innerHTML = '';
+
+                    data.forEach(patient => {
+                        const patientItem = createPatientElement(patient);
+                        patientList.appendChild(patientItem);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('加载患者列表失败');
+                });
+        }
+
+        // 创建患者元素
+        function createPatientElement(patient) {
+            const li = document.createElement('li');
+            li.className = 'patient-item';
+            
+            const header = document.createElement('div');
+            header.className = 'patient-header';
+            header.innerHTML = `
+                <div class="patient-info">
+                    <span class="patient-id">ID: ${patient.id}</span>
+                    <span> | ${patient.name}</span>
+                    <span> | ${patient.gender}</span>
+                    <span> | ${patient.age}岁</span>
+                </div>
+            `;
+            
+            const assessmentList = document.createElement('div');
+            assessmentList.className = 'assessment-list';
+            
+            // 添加评估记录
+            patient.assessments.forEach(assessment => {
+                const assessmentItem = document.createElement('div');
+                assessmentItem.className = 'assessment-item';
+                
+                const status = assessment.completed ? '已完成' : '进行中';
+                const statusClass = assessment.completed ? 'completed' : 'in-progress';
+                
+                assessmentItem.innerHTML = `
+                    <div class="assessment-info">
+                        <span>评估时间: ${new Date(assessment.timestamp).toLocaleString()}</span>
+                        <span class="status ${statusClass}">状态: ${status}</span>
+                    </div>
+                    <div class="assessment-actions">
+                        ${assessment.completed ? 
+                            `<a href="/report?assessment_id=${assessment.id}" class="btn btn-primary">查看报告</a>` :
+                            `<button onclick="continueAssessment('${patient.id}', '${assessment.id}')" class="btn btn-secondary">继续评估</button>`
+                        }
+                    </div>
+                `;
+                
+                assessmentList.appendChild(assessmentItem);
+            });
+            
+            // 添加展开/收起功能
+            header.addEventListener('click', () => {
+                li.classList.toggle('active');
+            });
+            
+            li.appendChild(header);
+            li.appendChild(assessmentList);
+            return li;
+        }
+
+        // 继续未完成的评估
+        function continueAssessment(patientId, assessmentId) {
+            // 设置患者信息和评估ID到localStorage
+            fetch(`/get_patient_info?patient_id=${patientId}`)
+                .then(response => response.json())
+                .then(data => {
+                    localStorage.setItem('patientInfo', JSON.stringify(data));
+                    localStorage.setItem('currentAssessmentId', assessmentId);
+                    window.location.href = '/';
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('继续评估失败');
+                });
+        }
+
+        // 开始新的评估
+        function startNewAssessment() {
+            // 清除之前的数据
+            localStorage.clear();
+            window.location.href = '/login';
+        }
+
+        // 页面加载时获取患者列表
+        document.addEventListener('DOMContentLoaded', loadPatients);
+    </script>
+</body>
+</html> 
