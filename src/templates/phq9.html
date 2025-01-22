@@ -371,12 +371,6 @@
 
             <button type="submit">提交评估</button>
         </form>
-
-        <div class="result" id="result">
-            <h2>评估结果</h2>
-            <p>总分：<span id="total-score">0</span></p>
-            <p>评估结果：<span id="interpretation"></span></p>
-        </div>
     </div>
 
     <script>
@@ -453,12 +447,8 @@
                 if (data && data.error) {
                     alert('保存失败：' + data.error);
                 } else {
-                    // 添加查看报告的提示
-                    const viewReportButton = document.createElement('button');
-                    viewReportButton.textContent = '查看完整评估报告';
-                    viewReportButton.onclick = () => window.location.href = '/report';
-                    viewReportButton.style.marginTop = '20px';
-                    document.getElementById('result').appendChild(viewReportButton);
+                    // 直接跳转到报告页面
+                    window.location.href = '/report';
                 }
             })
             .catch(error => {

@@ -309,13 +309,13 @@ def get_report():
         assessment_dir = os.path.join(root_dir, "assessment_results")
         if os.path.exists(assessment_dir):
             # 获取最新的HAMD评估结果
-            hamd_files = [f for f in os.listdir(assessment_dir) if f.startswith(f"assessment_{patient_id}_")]
+            hamd_files = [f for f in os.listdir(assessment_dir) if f.startswith(f"hamd_{patient_id}_")]
             if hamd_files:
                 latest_hamd = max(hamd_files)
                 with open(os.path.join(assessment_dir, latest_hamd), 'r', encoding='utf-8') as f:
                     result_data = json.load(f)
                     hamd_result = {
-                        'total_score': result_data['total_score'],  # 直接使用文件中的总分
+                        'total_score': result_data['total_score'],
                         'severity': get_hamd_severity(result_data['total_score'])
                     }
                     

@@ -12,6 +12,7 @@ class AssessmentItem:
 
 class AssessmentFramework:
     def __init__(self, prompt_file_path, model_config):
+        """初始化评估框架"""
         self.items = []
         self.current_item_index = 0
         self.scores = {}  # 存储评分，使用hamd1-hamd24格式
@@ -20,20 +21,24 @@ class AssessmentFramework:
         self.patient_info = {}  # 存储患者基本信息
         self.insight_item = None  # 存储自知力评估项目
         
+        # 获取项目根目录
+        self.root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        
         # 创建评分结果保存目录
-        self.results_dir = os.path.join(os.path.dirname(prompt_file_path), "assessment_results")
-        self.progress_dir = os.path.join(os.path.dirname(prompt_file_path), "progress")
-        
-        # 创建必要的目录
-        for directory in [self.results_dir, self.progress_dir]:
-            if not os.path.exists(directory):
-                os.makedirs(directory)
-        
+        self.results_dir = os.path.join(self.root_dir, "assessment_results")
+        if not os.path.exists(self.results_dir):
+            os.makedirs(self.results_dir)
+            
+        self.progress_dir = os.path.join(self.root_dir, "progress")
+        if not os.path.exists(self.progress_dir):
+            os.makedirs(self.progress_dir)
+            
         # 初始化提示词解析器和LLM处理器
         self.prompt_parser = PromptParser(prompt_file_path)
+        self.llm_handler = LLMHandler(model_config)
+        
         # 按数字排序解析提示词
         self.prompt_parser.parse_file(sort_by_number=False)
-        self.llm_handler = LLMHandler(model_config)
         
     def initialize_items_from_prompts(self):
         """根据提示词文件初始化评估项目"""
@@ -147,29 +152,40 @@ class AssessmentFramework:
         self.patient_info = info
         
     def save_assessment_result(self):
-        """保存评估结果到文件"""
+        """保存评估结果"""
         try:
+            if not self.patient_info:
+                print("警告：没有患者信息，无法保存评估结果")
+                return False
+                
+            # 使用患者ID和时间戳生成文件名
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"assessment_{timestamp}.json"
+            filename = f"hamd_{self.patient_info['id']}_{timestamp}.json"
             filepath = os.path.join(self.results_dir, filename)
             
-            # 在评估数据中加入患者信息
-            assessment_data = {
-                'timestamp': timestamp,
-                'patient_info': self.patient_info,  # 添加患者信息
-                'scores': self.scores,  # 最终评分
-                'score_history': self.score_history,  # 评分历史
-                'conversation_history': self.conversation_history
+            # 计算总分
+            total_score = sum(self.scores.values())
+            
+            # 准备保存的数据
+            result_data = {
+                "timestamp": timestamp,
+                "patient_info": self.patient_info,
+                "scores": self.scores,
+                "total_score": total_score,
+                "score_history": self.score_history,
+                "conversation_history": self.conversation_history
             }
             
+            # 保存结果
             with open(filepath, 'w', encoding='utf-8') as f:
-                # 使用ensure_ascii=False确保不对非ASCII字符进行转义
-                json.dump(assessment_data, f, ensure_ascii=False, indent=2, separators=(',', ': '))
+                json.dump(result_data, f, ensure_ascii=False, indent=2)
                 
             print(f"评估结果已保存到: {filepath}")
+            return True
             
         except Exception as e:
-            print(f"保存评估结果出错: {str(e)}")
+            print(f"保存评估结果时出错: {str(e)}")
+            return False
     
     def save_progress(self):
         """保存当前进度"""
