@@ -305,48 +305,42 @@ def get_report():
     """获取评估报告数据"""
     try:
         patient_id = request.args.get('patient_id')
-        assessment_id = request.args.get('assessment_id')
-        
         if not patient_id:
             return jsonify({'error': '未提供患者ID'}), 400
             
         # 获取评估结果目录
         assessment_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assessment_results")
         phq9_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "phq9_results")
-            
-        # 如果提供了 assessment_id,查找特定评估
-        if assessment_id:
-            hamd_file = f"hamd_{patient_id}_{assessment_id}.json"
-            phq9_file = f"phq9_{patient_id}_{assessment_id}.json"
-        else:
-            # 否则查找最新评估
-            latest_timestamp = None
-            for filename in os.listdir(assessment_dir):
-                if filename.startswith(f'hamd_{patient_id}_'):
-                    timestamp = filename.split('_')[-1].split('.')[0]
-                    if not latest_timestamp or timestamp > latest_timestamp:
-                        latest_timestamp = timestamp
-            
-            if not latest_timestamp:
-                return jsonify({'error': '未找到评估记录'}), 404
-                
-            hamd_file = f"hamd_{patient_id}_{latest_timestamp}.json"
-            phq9_file = f"phq9_{patient_id}_{latest_timestamp}.json"
         
-        # 读取 HAMD 结果
-        hamd_path = os.path.join(assessment_dir, hamd_file)
-        if not os.path.exists(hamd_path):
+        # 查找最新的HAMD评估
+        hamd_files = [f for f in os.listdir(assessment_dir) if f.startswith(f'hamd_{patient_id}_')]
+        if not hamd_files:
             return jsonify({'error': '未找到HAMD评估记录'}), 404
             
+        # 按时间戳排序，获取最新的评估
+        latest_hamd = max(hamd_files, key=lambda x: os.path.getctime(os.path.join(assessment_dir, x)))
+        timestamp = latest_hamd.split('_')[-1].split('.')[0]
+        
+        # 读取HAMD结果
+        hamd_path = os.path.join(assessment_dir, latest_hamd)
         with open(hamd_path, 'r', encoding='utf-8') as f:
             hamd_data = json.load(f)
             
-        # 读取 PHQ-9 结果
+        # 查找对应的PHQ-9结果
+        phq9_file = f"phq9_{patient_id}_{timestamp}.json"
         phq9_path = os.path.join(phq9_dir, phq9_file)
         phq9_data = None
+        
         if os.path.exists(phq9_path):
             with open(phq9_path, 'r', encoding='utf-8') as f:
                 phq9_data = json.load(f)
+        else:
+            # 如果没找到对应时间戳的PHQ-9，尝试找最新的PHQ-9
+            phq9_files = [f for f in os.listdir(phq9_dir) if f.startswith(f'phq9_{patient_id}_')]
+            if phq9_files:
+                latest_phq9 = max(phq9_files, key=lambda x: os.path.getctime(os.path.join(phq9_dir, x)))
+                with open(os.path.join(phq9_dir, latest_phq9), 'r', encoding='utf-8') as f:
+                    phq9_data = json.load(f)
         
         # 准备报告数据
         report_data = {
@@ -362,7 +356,7 @@ def get_report():
             report_data['phq9'] = {
                 'total_score': phq9_data['total_score'],
                 'interpretation': phq9_data['interpretation'],
-                'answers': phq9_data['answers']
+                'answers': phq9_data.get('answers', [])  # 使用get方法避免键不存在的错误
             }
         
         return jsonify(report_data)
