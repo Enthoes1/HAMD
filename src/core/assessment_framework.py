@@ -128,7 +128,7 @@ class AssessmentFramework:
                 # 计算除hamd17外的所有评分总和
                 total_score = sum(score for label, score in self.scores.items() if label != "hamd17")
                 
-                # 如果总分小于等于8分，直接设置hamd17为0分并跳过
+                # 如果总分小于等于8分，直接设置hamd17为0分并继续评估
                 if total_score <= 8:
                     self.scores["hamd17"] = 0
                     if "hamd17" not in self.score_history:
@@ -137,10 +137,23 @@ class AssessmentFramework:
                         'score': 0,
                         'timestamp': datetime.now().isoformat()
                     })
-                    return None
+                    # 保存进度
+                    self.save_progress()
+                    # 继续到下一个项目
+                    self.current_item_index += 1
+                    if self.current_item_index < len(self.items) - 1:
+                        return self.items[self.current_item_index + 1]
+                    else:
+                        # 如果是最后一个项目，保存结果并返回None
+                        self.save_assessment_result()
+                        return None
                     
             self.current_item_index += 1
             return next_item
+        
+        # 如果是最后一个项目，保存结果
+        if self.current_item_index == len(self.items) - 1:
+            self.save_assessment_result()
         return None
         
     def get_conversation_history(self, item_id):
@@ -159,11 +172,13 @@ class AssessmentFramework:
                 return False
                 
             # 检查是否所有必需的评分项都已完成
-            expected_items = set(item.item_id for item in self.items)
-            completed_items = set(self.scores.keys())
+            # 获取所有需要的hamd标签（从hamd1到hamd24）
+            expected_scores = {f"hamd{i}" for i in range(1, 25)}
+            completed_scores = set(self.scores.keys())
             
-            if not expected_items.issubset(completed_items):
-                print("警告：评估未完全完成，不生成结果文件")
+            if not expected_scores.issubset(completed_scores):
+                missing_scores = expected_scores - completed_scores
+                print(f"警告：评估未完全完成，缺少以下评分项：{missing_scores}")
                 return False
                 
             # 使用患者ID和时间戳生成文件名

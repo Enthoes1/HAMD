@@ -371,13 +371,19 @@
 
             <button type="submit">提交评估</button>
         </form>
+
+        <!-- 添加结果显示区域 -->
+        <div id="result" class="result">
+            <h3>评估结果</h3>
+            <p>总分：<span id="total-score"></span></p>
+            <p>解释：<span id="interpretation"></span></p>
+        </div>
     </div>
 
     <script>
         // 检查患者信息
         const patientInfo = JSON.parse(localStorage.getItem('patientInfo'));
         if (!patientInfo) {
-            // 如果没有患者信息，重定向到登录页面
             window.location.href = '/login';
         }
 
@@ -393,15 +399,25 @@
         document.getElementById('phq9-form').addEventListener('submit', function(e) {
             e.preventDefault();
             
+            // 验证所有问题都已回答
+            for (let i = 1; i <= 9; i++) {
+                if (!document.querySelector(`input[name="q${i}"]:checked`)) {
+                    alert('请回答所有问题');
+                    return;
+                }
+            }
+            
             // 计算总分
             let totalScore = 0;
+            const answers = [];
             for (let i = 1; i <= 9; i++) {
                 const value = parseInt(document.querySelector(`input[name="q${i}"]:checked`).value);
                 totalScore += value;
+                answers.push({
+                    question: i,
+                    score: value
+                });
             }
-            
-            // 显示结果
-            document.getElementById('total-score').textContent = totalScore;
             
             // 解释结果
             let interpretation = '';
@@ -417,6 +433,8 @@
                 interpretation = '重度抑郁症状';
             }
             
+            // 显示结果
+            document.getElementById('total-score').textContent = totalScore;
             document.getElementById('interpretation').textContent = interpretation;
             document.getElementById('result').style.display = 'block';
 
@@ -431,10 +449,8 @@
                     patient_name: patientInfo.name,
                     total_score: totalScore,
                     interpretation: interpretation,
-                    answers: Array.from({length: 9}, (_, i) => ({
-                        question: i + 1,
-                        score: parseInt(document.querySelector(`input[name="q${i+1}"]:checked`).value)
-                    }))
+                    answers: answers,
+                    timestamp: new Date().toISOString()
                 })
             })
             .then(response => {
@@ -447,8 +463,10 @@
                 if (data && data.error) {
                     alert('保存失败：' + data.error);
                 } else {
-                    // 直接跳转到报告页面
-                    window.location.href = '/report';
+                    // 等待1秒后跳转，让用户看到结果
+                    setTimeout(() => {
+                        window.location.href = '/report';
+                    }, 1000);
                 }
             })
             .catch(error => {
@@ -456,52 +474,6 @@
                 alert('保存失败，请重试');
             });
         });
-
-        function submitForm() {
-            const formData = new FormData(document.getElementById('phq9-form'));
-            const answers = {};
-            let totalScore = 0;
-            
-            for (let [key, value] of formData.entries()) {
-                answers[key] = parseInt(value);
-                totalScore += parseInt(value);
-            }
-            
-            const patientInfo = JSON.parse(localStorage.getItem('patientInfo'));
-            const result = {
-                patient_id: patientInfo.id,
-                answers: answers,
-                total_score: totalScore,
-                timestamp: new Date().toISOString()
-            };
-            
-            fetch('/submit_phq9', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(result)
-            })
-            .then(response => {
-                if (response.status === 401) {
-                    window.location.href = '/login';
-                    return;
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.error) {
-                    alert(data.error);
-                    return;
-                }
-                // 直接跳转到报告页面
-                window.location.href = '/report';
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('提交失败，请重试');
-            });
-        }
     </script>
 </body>
 </html>
