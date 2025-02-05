@@ -152,10 +152,18 @@ class AssessmentFramework:
         self.patient_info = info
         
     def save_assessment_result(self):
-        """保存评估结果"""
+        """保存评估结果（仅在评估完全完成时调用）"""
         try:
             if not self.patient_info:
                 print("警告：没有患者信息，无法保存评估结果")
+                return False
+                
+            # 检查是否所有必需的评分项都已完成
+            expected_items = set(item.item_id for item in self.items)
+            completed_items = set(self.scores.keys())
+            
+            if not expected_items.issubset(completed_items):
+                print("警告：评估未完全完成，不生成结果文件")
                 return False
                 
             # 使用患者ID和时间戳生成文件名
@@ -181,6 +189,13 @@ class AssessmentFramework:
                 json.dump(result_data, f, ensure_ascii=False, indent=2)
                 
             print(f"评估结果已保存到: {filepath}")
+            
+            # 评估完成后删除进度文件
+            progress_file = os.path.join(self.progress_dir, f"progress_{self.patient_info['id']}.json")
+            if os.path.exists(progress_file):
+                os.remove(progress_file)
+                print(f"已删除进度文件: {progress_file}")
+                
             return True
             
         except Exception as e:
@@ -188,7 +203,7 @@ class AssessmentFramework:
             return False
     
     def save_progress(self):
-        """保存当前进度"""
+        """保存当前进度（在每次评分或对话更新后调用）"""
         try:
             if not self.patient_info:
                 print("没有患者信息，无法保存进度")
@@ -209,14 +224,14 @@ class AssessmentFramework:
                 'current_item_index': self.current_item_index,
                 'scores': self.scores,
                 'score_history': self.score_history,
-                'conversation_history': self.conversation_history
+                'conversation_history': self.conversation_history,
+                'last_update': datetime.now().isoformat()  # 添加最后更新时间
             }
             
             filename = f"progress_{self.patient_info['id']}.json"
             filepath = os.path.join(self.progress_dir, filename)
             
             with open(filepath, 'w', encoding='utf-8') as f:
-                # 使用ensure_ascii=False确保不对非ASCII字符进行转义
                 json.dump(progress_data, f, ensure_ascii=False, indent=2, separators=(',', ': '))
                 
             print(f"进度已保存: {filepath}")
