@@ -132,6 +132,11 @@
             color: white;
         }
 
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+
         .btn:hover {
             opacity: 0.9;
         }
@@ -149,6 +154,52 @@
             cursor: pointer;
             font-size: 14px;
         }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+
+        .modal-content {
+            position: relative;
+            background-color: white;
+            margin: 15% auto;
+            padding: 20px;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .modal-buttons {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .modal-buttons button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .modal-confirm {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .modal-cancel {
+            background-color: #6c757d;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -163,7 +214,66 @@
         </ul>
     </div>
 
+    <!-- 确认删除对话框 -->
+    <div id="deleteModal" class="modal">
+        <div class="modal-content">
+            <h2>确认删除</h2>
+            <p>您确定要删除这条评估记录吗？此操作不可恢复。</p>
+            <div class="modal-buttons">
+                <button class="modal-confirm" onclick="confirmDelete()">确认删除</button>
+                <button class="modal-cancel" onclick="closeModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
     <script>
+        let deleteData = null; // 存储要删除的评估数据
+
+        // 显示确认对话框
+        function showDeleteConfirm(patientId, assessmentId) {
+            deleteData = { patientId, assessmentId };
+            document.getElementById('deleteModal').style.display = 'block';
+        }
+
+        // 关闭对话框
+        function closeModal() {
+            document.getElementById('deleteModal').style.display = 'none';
+            deleteData = null;
+        }
+
+        // 确认删除
+        function confirmDelete() {
+            if (!deleteData) return;
+
+            fetch('/delete_assessment', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    patient_id: deleteData.patientId,
+                    assessment_id: deleteData.assessmentId
+                })
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    // 重新加载患者列表
+                    loadPatients();
+                    alert('评估记录已删除');
+                } else {
+                    alert('删除失败：' + (result.error || '未知错误'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('删除失败，请重试');
+            })
+            .finally(() => {
+                closeModal();
+            });
+        }
+
         // 加载所有患者及其评估记录
         function loadPatients() {
             fetch('/get_all_patients')
@@ -193,9 +303,9 @@
             header.innerHTML = `
                 <div class="patient-info">
                     <span class="patient-id">ID: ${patient.id}</span>
-                    <span> | ${patient.name}</span>
-                    <span> | ${patient.gender}</span>
-                    <span> | ${patient.age}岁</span>
+                    <span> | 姓名: ${patient.name || '未知'}</span>
+                    <span> | 性别: ${patient.gender || '未知'}</span>
+                    <span> | 年龄: ${patient.age ? patient.age + '岁' : '未知'}</span>
                 </div>
             `;
             
@@ -203,28 +313,43 @@
             assessmentList.className = 'assessment-list';
             
             // 添加评估记录
-            patient.assessments.forEach(assessment => {
-                const assessmentItem = document.createElement('div');
-                assessmentItem.className = 'assessment-item';
-                
-                const status = assessment.completed ? '已完成' : '进行中';
-                const statusClass = assessment.completed ? 'completed' : 'in-progress';
-                
-                assessmentItem.innerHTML = `
-                    <div class="assessment-info">
-                        <span>评估时间: ${new Date(assessment.timestamp).toLocaleString()}</span>
-                        <span class="status ${statusClass}">状态: ${status}</span>
-                    </div>
-                    <div class="assessment-actions">
-                        ${assessment.completed ? 
-                            `<a href="/report?assessment_id=${assessment.id}" class="btn btn-primary">查看报告</a>` :
-                            `<button onclick="continueAssessment('${patient.id}', '${assessment.id}')" class="btn btn-secondary">继续评估</button>`
-                        }
-                    </div>
-                `;
-                
-                assessmentList.appendChild(assessmentItem);
-            });
+            if (patient.assessments && patient.assessments.length > 0) {
+                patient.assessments.forEach(assessment => {
+                    const assessmentItem = document.createElement('div');
+                    assessmentItem.className = 'assessment-item';
+                    
+                    const status = assessment.completed ? '已完成' : '进行中';
+                    const statusClass = assessment.completed ? 'completed' : 'in-progress';
+                    
+                    let assessmentInfo = `评估时间: ${assessment.timestamp}`;
+                    if (!assessment.completed) {
+                        assessmentInfo += ` | 当前进度: 第${assessment.current_item || 0}题`;
+                    } else if (assessment.total_score !== undefined) {
+                        assessmentInfo += ` | 总分: ${assessment.total_score}分`;
+                    }
+                    
+                    assessmentItem.innerHTML = `
+                        <div class="assessment-info">
+                            <span>${assessmentInfo}</span>
+                            <span class="status ${statusClass}">状态: ${status}</span>
+                        </div>
+                        <div class="assessment-actions">
+                            ${assessment.completed ? 
+                                `<a href="/report?assessment_id=${assessment.id}" class="btn btn-primary">查看报告</a>` :
+                                `<button onclick="continueAssessment('${patient.id}', '${assessment.id}')" class="btn btn-secondary">继续评估</button>`
+                            }
+                            <button onclick="event.stopPropagation(); showDeleteConfirm('${patient.id}', '${assessment.id}')" class="btn btn-danger">删除</button>
+                        </div>
+                    `;
+                    
+                    assessmentList.appendChild(assessmentItem);
+                });
+            } else {
+                const noAssessment = document.createElement('div');
+                noAssessment.className = 'no-assessment';
+                noAssessment.textContent = '暂无评估记录';
+                assessmentList.appendChild(noAssessment);
+            }
             
             // 添加展开/收起功能
             header.addEventListener('click', () => {

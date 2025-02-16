@@ -217,14 +217,19 @@
                 },
                 body: `password=${encodeURIComponent(password)}`
             })
-            .then(response => response.text())
+            .then(response => response.json())
             .then(result => {
-                if (result === 'success') {
-                    // 切换到评估选择界面
-                    document.getElementById('login-section').classList.remove('active');
-                    document.getElementById('choice-section').classList.add('active');
-                    document.getElementById('step1').classList.remove('active');
-                    document.getElementById('step2').classList.add('active');
+                if (result.status === 'success') {
+                    if (result.is_admin) {
+                        // 管理员直接跳转到管理页面
+                        window.location.href = '/admin';
+                    } else {
+                        // 普通用户进入评估选择界面
+                        document.getElementById('login-section').classList.remove('active');
+                        document.getElementById('choice-section').classList.add('active');
+                        document.getElementById('step1').classList.remove('active');
+                        document.getElementById('step2').classList.add('active');
+                    }
                 } else {
                     errorDiv.textContent = '密码错误';
                     errorDiv.style.display = 'block';

@@ -115,12 +115,21 @@ def login():
         if password == ADMIN_CODE:
             session['authenticated'] = True
             session['is_admin'] = True
-            return 'success'
+            return jsonify({
+                'status': 'success',
+                'is_admin': True
+            })
         elif password == ACCESS_CODE:
             session['authenticated'] = True
             session['is_admin'] = False
-            return 'success'
-        return 'error'
+            return jsonify({
+                'status': 'success',
+                'is_admin': False
+            })
+        return jsonify({
+            'status': 'error',
+            'message': '密码错误'
+        })
 
 @socketio.on('connect')
 def handle_connect():
@@ -401,8 +410,6 @@ def get_all_patients():
         os.makedirs(progress_dir, exist_ok=True)
         os.makedirs(results_dir, exist_ok=True)
         
-        print(f"扫描目录: progress_dir={progress_dir}, results_dir={results_dir}")  # 添加调试日志
-        
         # 读取进行中的评估
         if os.path.exists(progress_dir):
             for file in os.listdir(progress_dir):
@@ -410,19 +417,28 @@ def get_all_patients():
                     patient_id = file.replace('progress_', '').replace('.json', '')
                     with open(os.path.join(progress_dir, file), 'r', encoding='utf-8') as f:
                         progress_data = json.load(f)
+                        patient_info = progress_data.get('patient_info', {})
+                        
                         if patient_id not in patients:
                             patients[patient_id] = {
                                 'id': patient_id,
-                                'info': progress_data['patient_info'],
+                                'name': patient_info.get('name', '未知'),
+                                'gender': patient_info.get('gender', '未知'),
+                                'age': patient_info.get('age', '未知'),
                                 'assessments': []
                             }
+                            
                         # 添加进行中的评估
-                        patients[patient_id]['assessments'].append({
+                        assessment_info = {
                             'id': 'current',
-                            'timestamp': datetime.now().isoformat(),
+                            'timestamp': datetime.now().strftime("%Y/%m/%d %H:%M:%S"),
                             'completed': False,
-                            'current_item': progress_data.get('current_item_index', 0) + 1  # 使用get方法避免键不存在的错误
-                        })
+                            'current_item': progress_data.get('current_item_index', 0) + 1
+                        }
+                        
+                        # 检查是否已存在相同的评估记录
+                        if not any(a['id'] == 'current' for a in patients[patient_id]['assessments']):
+                            patients[patient_id]['assessments'].append(assessment_info)
         
         # 读取已完成的评估
         if os.path.exists(results_dir):
@@ -434,19 +450,35 @@ def get_all_patients():
                     
                     with open(os.path.join(results_dir, file), 'r', encoding='utf-8') as f:
                         result_data = json.load(f)
+                        patient_info = result_data.get('patient_info', {})
+                        
                         if patient_id not in patients:
                             patients[patient_id] = {
                                 'id': patient_id,
-                                'info': result_data['patient_info'],
+                                'name': patient_info.get('name', '未知'),
+                                'gender': patient_info.get('gender', '未知'),
+                                'age': patient_info.get('age', '未知'),
                                 'assessments': []
                             }
+                        else:
+                            # 更新患者信息（使用最新的信息）
+                            patients[patient_id].update({
+                                'name': patient_info.get('name', patients[patient_id]['name']),
+                                'gender': patient_info.get('gender', patients[patient_id]['gender']),
+                                'age': patient_info.get('age', patients[patient_id]['age'])
+                            })
+                            
                         # 添加已完成的评估
-                        patients[patient_id]['assessments'].append({
+                        assessment_info = {
                             'id': timestamp,
-                            'timestamp': result_data['timestamp'],
+                            'timestamp': datetime.strptime(timestamp, "%Y%m%d_%H%M%S").strftime("%Y/%m/%d %H:%M:%S"),
                             'completed': True,
                             'total_score': result_data.get('total_score', 0)
-                        })
+                        }
+                        
+                        # 检查是否已存在相同的评估记录
+                        if not any(a['id'] == timestamp for a in patients[patient_id]['assessments']):
+                            patients[patient_id]['assessments'].append(assessment_info)
         
         # 将字典转换为列表并按ID排序
         patient_list = list(patients.values())
@@ -493,6 +525,49 @@ def get_patient_info():
         
     except Exception as e:
         print(f"获取患者信息时出错: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/delete_assessment', methods=['POST'])
+def delete_assessment():
+    """删除评估记录"""
+    if not check_auth() or not check_admin():
+        return jsonify({'error': '未授权访问'}), 401
+        
+    try:
+        data = request.get_json()
+        patient_id = data.get('patient_id')
+        assessment_id = data.get('assessment_id')
+        
+        if not patient_id or not assessment_id:
+            return jsonify({'error': '缺少必要参数'}), 400
+            
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        # 如果是进行中的评估
+        if assessment_id == 'current':
+            progress_file = os.path.join(root_dir, "progress", f"progress_{patient_id}.json")
+            if os.path.exists(progress_file):
+                os.remove(progress_file)
+                print(f"已删除进行中的评估: {progress_file}")
+        else:
+            # 如果是已完成的评估
+            results_dir = os.path.join(root_dir, "assessment_results")
+            result_file = os.path.join(results_dir, f"hamd_{patient_id}_{assessment_id}.json")
+            if os.path.exists(result_file):
+                os.remove(result_file)
+                print(f"已删除已完成的评估: {result_file}")
+                
+            # 同时删除对应的PHQ9评估（如果存在）
+            phq9_dir = os.path.join(root_dir, "phq9_results")
+            phq9_file = os.path.join(phq9_dir, f"phq9_{patient_id}_{assessment_id}.json")
+            if os.path.exists(phq9_file):
+                os.remove(phq9_file)
+                print(f"已删除对应的PHQ9评估: {phq9_file}")
+        
+        return jsonify({'success': True, 'message': '评估记录已删除'})
+        
+    except Exception as e:
+        print(f"删除评估记录时出错: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
