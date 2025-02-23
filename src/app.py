@@ -14,6 +14,7 @@ import asyncio
 from core.assessment_framework import AssessmentFramework
 from utils.globals import socketio, init_socketio
 from utils.prompt_parser import PromptParser
+from speech.speech_recognition import SpeechRecognition
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
@@ -570,5 +571,45 @@ def delete_assessment():
         print(f"删除评估记录时出错: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+# 初始化语音识别器
+speech_recognizer = SpeechRecognition(model_name="medium")  # 使用 medium 模型平衡性能和准确率
+
+@socketio.on('start_recording')
+def handle_start_recording():
+    """处理开始录音请求"""
+    try:
+        speech_recognizer.start_recording()
+    except Exception as e:
+        print(f"开始录音错误: {str(e)}")
+        emit('message', {
+            'type': 'message',
+            'role': 'system',
+            'content': f"录音错误：{str(e)}"
+        })
+
+@socketio.on('stop_recording')
+def handle_stop_recording():
+    """处理停止录音请求"""
+    try:
+        # 停止录音并获取识别结果
+        text = speech_recognizer.stop_recording()
+        
+        # 发送识别结果到前端
+        emit('transcription', {
+            'text': text
+        })
+    except Exception as e:
+        print(f"停止录音错误: {str(e)}")
+        emit('message', {
+            'type': 'message',
+            'role': 'system',
+            'content': f"录音错误：{str(e)}"
+        })
+
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    try:
+        # 使用 127.0.0.1 替代 localhost 或 0.0.0.0
+        socketio.run(app, host='127.0.0.1', port=5000, debug=True)
+    except OSError as e:
+        print(f"端口5000可能被占用，尝试使用7860端口")
+        socketio.run(app, host='127.0.0.1', port=7860, debug=True)

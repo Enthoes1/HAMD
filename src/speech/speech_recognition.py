@@ -10,9 +10,22 @@ import os
 def check_gpu_status():
     """检查GPU状态"""
     print("\n=== GPU 状态检查 ===")
+    print(f"PyTorch版本: {torch.__version__}")
     print(f"CUDA是否可用: {torch.cuda.is_available()}")
     if torch.cuda.is_available():
+        print(f"CUDA版本: {torch.version.cuda}")
         print(f"当前GPU设备: {torch.cuda.get_device_name(0)}")
+        print(f"GPU数量: {torch.cuda.device_count()}")
+    else:
+        print("CUDA不可用，可能的原因：")
+        print("1. PyTorch未安装CUDA版本")
+        print("2. NVIDIA驱动未正确安装")
+        print("3. CUDA工具包未正确安装")
+        print("\n建议执行以下步骤：")
+        print("1. 确认是否安装了NVIDIA驱动")
+        print("2. 使用 nvidia-smi 命令检查GPU状态")
+        print("3. 重新安装支持CUDA的PyTorch版本：")
+        print("   pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118")
     print("=================\n")
 
 class SpeechRecognition:
@@ -96,7 +109,6 @@ class SpeechRecognition:
     def stop_recording(self):
         """停止录音并返回识别结果"""
         if not self.recording or not self.stream:
-            print("没有正在进行的录音")
             return ""
         
         try:
@@ -114,44 +126,45 @@ class SpeechRecognition:
             try:
                 audio_data = np.concatenate(self.audio_data, axis=0)
                 print(f"录音数据形状: {audio_data.shape}")
-                print(f"录音数据类型: {audio_data.dtype}")
-                print(f"录音数据范围: {np.min(audio_data)} to {np.max(audio_data)}")
+                
+                # 确保音频数据是一维的
+                audio_data = audio_data.flatten()
+                
+                # 如果使用GPU，将数据转移到GPU
+                if torch.cuda.is_available():
+                    with torch.cuda.device(0):  # 使用第一个GPU
+                        torch.cuda.empty_cache()  # 清理GPU缓存
+                
             except Exception as e:
                 print(f"处理录音数据出错: {str(e)}")
                 return ""
             
             try:
-                # 直接使用内存中的音频数据，跳过文件保存
-                try:
-                    print(f"开始识别音频...")
-                    # 确保音频数据是一维的
-                    audio_data = audio_data.flatten()
-                    result = self.model.transcribe(
-                        audio_data,
-                        language='zh'
-                    )
-                    print("识别完成")
-                    
-                    text = result["text"].strip()
-                    print(f"识别结果: {text}")
-                    return text
-                    
-                except Exception as e:
-                    print(f"Whisper识别错误: {str(e)}")
-                    import traceback
-                    print(f"详细错误信息: {traceback.format_exc()}")
-                    return ""
-                    
+                # 使用whisper进行语音识别
+                result = self.model.transcribe(
+                    audio_data,
+                    language='zh',          # 指定中文
+                    task='transcribe',      # 使用转写任务
+                    fp16=True if torch.cuda.is_available() else False,  # 使用半精度
+                    beam_size=1,            # 减少内存使用
+                    best_of=1,              # 减少内存使用
+                    temperature=0.0,        # 减少随机性
+                    compression_ratio_threshold=2.4,
+                    no_speech_threshold=0.6,
+                    condition_on_previous_text=False  # 减少内存使用
+                )
+                
+                text = result["text"].strip()
+                return text
+                
             except Exception as e:
-                print(f"录音处理错误: {str(e)}")
+                print(f"Whisper识别错误: {str(e)}")
                 import traceback
                 print(f"详细错误信息: {traceback.format_exc()}")
                 return ""
             
         except Exception as e:
             print(f"录音处理错误: {str(e)}")
-            import traceback
-            print(f"详细错误信息: {traceback.format_exc()}")
             return ""
     
     def __del__(self):

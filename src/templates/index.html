@@ -5,6 +5,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     <style>
         * {
             box-sizing: border-box;
@@ -114,6 +115,27 @@
             border-radius: 20px;
             font-size: 16px;
             outline: none;
+        }
+
+        #record-button {
+            padding: 0.8rem;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            margin: 0 0.5rem;
+        }
+
+        #record-button.recording {
+            background-color: #dc3545;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
         }
 
         #send-button {
@@ -268,6 +290,9 @@
 
     <div class="input-container">
         <input type="text" id="user-input" placeholder="请输入您的回答...">
+        <button id="record-button" onclick="toggleRecording()">
+            <i class="fas fa-microphone"></i>
+        </button>
         <button id="send-button" onclick="sendMessage()">发送</button>
     </div>
 
@@ -277,6 +302,7 @@
         const userInput = document.getElementById('user-input');
         const sendButton = document.getElementById('send-button');
         const typingIndicator = document.querySelector('.typing');
+        let isRecording = false;
 
         // 从localStorage获取患者信息
         const patientInfo = JSON.parse(localStorage.getItem('patientInfo'));
@@ -363,6 +389,29 @@
         function hideTypingIndicator() {
             typingIndicator.style.display = 'none';
         }
+
+        function toggleRecording() {
+            const button = document.getElementById('record-button');
+            
+            if (!isRecording) {
+                // 开始录音
+                isRecording = true;
+                button.classList.add('recording');
+                socket.emit('start_recording');
+            } else {
+                // 停止录音
+                isRecording = false;
+                button.classList.remove('recording');
+                socket.emit('stop_recording');
+            }
+        }
+
+        // 添加录音结果处理
+        socket.on('transcription', function(data) {
+            if (data.text) {
+                document.getElementById('user-input').value = data.text;
+            }
+        });
 
         userInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
