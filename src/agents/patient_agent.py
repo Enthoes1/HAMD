@@ -21,10 +21,10 @@ class PatientAgent:
         self.total_prompt_tokens = 0  # 提示词token统计
         self.total_completion_tokens = 0  # 回复token统计
         
-        # 初始化OpenAI客户端
+        # 初始化OpenAI客户端，使用Ollama地址
         self.client = OpenAI(
-            api_key=model_config['api_key'],
-            base_url=model_config['base_url']
+            base_url=model_config['base_url'],  # Ollama地址
+            api_key="not-needed"  # Ollama不需要API key
         )
         self.model = model_config['model']
         self.parameters = model_config.get('parameters', {})
@@ -48,7 +48,7 @@ class PatientAgent:
         try:
             # 构建消息列表
             messages = [
-                {"role": "system", "content": "你要扮演一位轻症抑郁症患者，会有精神科大夫对你进行问诊。你的回答应该尽可能简短和口语化，最好每次不超过30个字。你的表述可以有不专业的地方，比如可以混淆抑郁和焦虑的区别等等"}
+                {"role": "system", "content": "你要扮演一位轻症焦虑症患者，会有精神科大夫对你进行问诊。你的回答应该尽可能简短和口语化，最好每次不超过30个字。你的表述可以有不专业的地方，比如可以混淆抑郁和焦虑的区别等等"}
             ]
             
             # 根据模式选择使用的对话历史

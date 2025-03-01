@@ -54,7 +54,8 @@ class DiagnosisAgent:
                         if not isinstance(scores, list):
                             scores = [scores]
                         for score in scores:
-                            self.framework.scores[current_item.item_id] = score
+                            for hamd_label, value in score.items():
+                                self.framework.scores[hamd_label] = value
                         
                         # 切换到下一个条目
                         next_item = self.framework.next_item()
@@ -68,8 +69,13 @@ class DiagnosisAgent:
                             self.current_question = question
                             return question
                         else:
-                            # 评估完成
-                            self.framework.save_assessment_result()
+                            # 评估完成，确保保存结果
+                            print("评估完成，保存结果...")
+                            success = self.framework.save_assessment_result()
+                            if success:
+                                print("结果保存成功")
+                            else:
+                                print("结果保存失败")
                             return None
                             
                     elif result.get('type') == 'message':

@@ -6,6 +6,8 @@ from src.utils.globals import socketio
 
 class LLMHandler:
     def __init__(self, model_config):
+        print(f"LLMHandler 初始化，使用模型: {model_config['model']}")
+        print(f"API地址: {model_config['base_url']}")
         self.client = OpenAI(
             api_key=model_config.get('api_key', os.getenv("DASHSCOPE_API_KEY")),
             base_url=model_config.get('base_url', "https://dashscope.aliyuncs.com/compatible-mode/v1")

@@ -171,31 +171,24 @@ class AssessmentFramework:
                 print("警告：没有患者信息，无法保存评估结果")
                 return False
                 
-            # 检查是否所有必需的评分项都已完成
-            # 获取所有需要的hamd标签（从hamd1到hamd24）
-            expected_scores = {f"hamd{i}" for i in range(1, 25)}
-            completed_scores = set(self.scores.keys())
-            
-            if not expected_scores.issubset(completed_scores):
-                missing_scores = expected_scores - completed_scores
-                print(f"警告：评估未完全完成，缺少以下评分项：{missing_scores}")
+            # 检查是否有评分数据
+            if not self.scores:
+                print("警告：没有评分数据，无法保存评估结果")
                 return False
                 
             # 使用患者ID和时间戳生成文件名
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"hamd_{self.patient_info['id']}_{timestamp}.json"
+            filename = f"assessment_{timestamp}.json"
             filepath = os.path.join(self.results_dir, filename)
             
-            # 计算总分
-            total_score = sum(self.scores.values())
+            print(f"准备保存结果到: {filepath}")
+            print(f"当前评分数据: {self.scores}")
             
             # 准备保存的数据
             result_data = {
                 "timestamp": timestamp,
                 "patient_info": self.patient_info,
                 "scores": self.scores,
-                "total_score": total_score,
-                "score_history": self.score_history,
                 "conversation_history": self.conversation_history
             }
             
@@ -204,17 +197,12 @@ class AssessmentFramework:
                 json.dump(result_data, f, ensure_ascii=False, indent=2)
                 
             print(f"评估结果已保存到: {filepath}")
-            
-            # 评估完成后删除进度文件
-            progress_file = os.path.join(self.progress_dir, f"progress_{self.patient_info['id']}.json")
-            if os.path.exists(progress_file):
-                os.remove(progress_file)
-                print(f"已删除进度文件: {progress_file}")
-                
             return True
             
         except Exception as e:
             print(f"保存评估结果时出错: {str(e)}")
+            import traceback
+            print(f"详细错误信息: {traceback.format_exc()}")
             return False
     
     def save_progress(self):
