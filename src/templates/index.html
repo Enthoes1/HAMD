@@ -304,6 +304,28 @@
         const typingIndicator = document.querySelector('.typing');
         let isRecording = false;
 
+        // 添加可靠的滚动到底部函数
+        function scrollToBottom(smooth = true) {
+            const container = document.querySelector('.container');
+            if (container) {
+                container.scroll({
+                    top: container.scrollHeight,
+                    behavior: smooth ? 'smooth' : 'auto'
+                });
+            }
+        }
+
+        // 添加自动滚动观察器
+        const autoScrollObserver = new MutationObserver(() => {
+            scrollToBottom();
+        });
+
+        // 开始观察聊天消息容器的变化
+        autoScrollObserver.observe(chatMessages, {
+            childList: true,
+            subtree: true
+        });
+
         // 从localStorage获取患者信息
         const patientInfo = JSON.parse(localStorage.getItem('patientInfo'));
         if (!patientInfo) {
@@ -340,7 +362,6 @@
             hideTypingIndicator();
             
             if (data.type === 'status') {
-                // 仍然创建状态元素，但不显示
                 const statusDiv = document.createElement('div');
                 statusDiv.className = 'status';
                 statusDiv.textContent = data.current_item;
@@ -350,13 +371,12 @@
                 userInput.disabled = true;
                 sendButton.disabled = true;
                 
-                // 直接跳转到 PHQ-9 页面
                 window.location.href = '/phq9';
             } else if (data.type === 'message') {
                 addMessage(data.content, data.role);
             }
             
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+            scrollToBottom();
         });
 
         function sendMessage() {
@@ -371,7 +391,7 @@
             });
             
             userInput.value = '';
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+            scrollToBottom();
         }
 
         function addMessage(content, role) {
@@ -379,11 +399,12 @@
             messageDiv.className = `message ${role}`;
             messageDiv.textContent = content;
             chatMessages.appendChild(messageDiv);
+            scrollToBottom();
         }
 
         function showTypingIndicator() {
             typingIndicator.style.display = 'block';
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+            scrollToBottom();
         }
 
         function hideTypingIndicator() {
