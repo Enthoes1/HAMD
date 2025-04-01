@@ -1,9 +1,6 @@
-import whisper
+from transformers import pipeline
 import sounddevice as sd
-import soundfile as sf
 import numpy as np
-import tempfile
-from pathlib import Path
 import torch
 import os
 
@@ -17,30 +14,11 @@ def check_gpu_status():
         print(f"当前GPU设备: {torch.cuda.get_device_name(0)}")
         print(f"GPU数量: {torch.cuda.device_count()}")
     else:
-        print("CUDA不可用，可能的原因：")
-        print("1. PyTorch未安装CUDA版本")
-        print("2. NVIDIA驱动未正确安装")
-        print("3. CUDA工具包未正确安装")
-        print("\n建议执行以下步骤：")
-        print("1. 确认是否安装了NVIDIA驱动")
-        print("2. 使用 nvidia-smi 命令检查GPU状态")
-        print("3. 重新安装支持CUDA的PyTorch版本：")
-        print("   pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118")
+        print("CUDA不可用")
     print("=================\n")
 
 class SpeechRecognition:
-    def __init__(self, model_name="base"):  
-        # 检查 ffmpeg 是否可用
-        try:
-            import subprocess
-            subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
-            print("ffmpeg 已安装并可用")
-        except Exception as e:
-            print("错误：ffmpeg 未安装或不可用")
-            print("请使用 conda install ffmpeg 安装 ffmpeg")
-            print(f"详细错误: {str(e)}")
-            raise Exception("ffmpeg 未安装或不可用")
-        
+    def __init__(self, model_name="BELLE-2/Belle-whisper-large-v3-zh", use_auth_token=None):
         # 检查GPU状态
         check_gpu_status()
         
@@ -49,21 +27,29 @@ class SpeechRecognition:
         print(f"Using device: {self.device} for Whisper model")
         
         try:
-            # 使用项目目录作为模型缓存位置
-            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            cache_dir = os.path.join(project_root, "models", "whisper")
-            os.makedirs(cache_dir, exist_ok=True)
-            print(f"使用项目目录作为模型缓存: {cache_dir}")
-            
-            self.model = whisper.load_model(
-                model_name,
+            # 初始化语音识别pipeline
+            self.transcriber = pipeline(
+                "automatic-speech-recognition",
+                model=model_name,
                 device=self.device,
-                download_root=cache_dir,  # 使用项目目录
-                in_memory=True
-            ).to(self.device)
+                token=use_auth_token  # 添加token支持
+            )
+            
+            # 设置为中文识别
+            self.transcriber.model.config.forced_decoder_ids = (
+                self.transcriber.tokenizer.get_decoder_prompt_ids(
+                    language="zh",
+                    task="transcribe"
+                )
+            )
+            
             print(f"Successfully loaded {model_name} model")
+            
         except Exception as e:
             print(f"加载模型出错: {str(e)}")
+            print("请确保已经登录 Hugging Face:")
+            print("1. 运行 huggingface-cli login")
+            print("2. 或者传入 use_auth_token 参数")
             raise
         
         self.recording = False
@@ -74,7 +60,6 @@ class SpeechRecognition:
     def start_recording(self):
         """开始录音"""
         try:
-            # 确保之前的录音已经停止
             if self.stream is not None:
                 try:
                     self.stream.stop()
@@ -91,7 +76,6 @@ class SpeechRecognition:
                 if self.recording:
                     self.audio_data.append(indata.copy())
             
-            # 开始录音
             self.stream = sd.InputStream(
                 channels=1,
                 samplerate=self.sample_rate,
@@ -117,48 +101,40 @@ class SpeechRecognition:
             self.stream.close()
             self.stream = None
             
-            # 检查是否有录音数据
             if not self.audio_data:
                 print("没有收到录音数据")
                 return ""
             
-            # 将录音数据转换为numpy数组
             try:
+                # 合并音频数据
                 audio_data = np.concatenate(self.audio_data, axis=0)
-                print(f"录音数据形状: {audio_data.shape}")
+                print(f"原始录音数据形状: {audio_data.shape}")
                 
-                # 确保音频数据是一维的
-                audio_data = audio_data.flatten()
+                # 确保音频是单通道的
+                if len(audio_data.shape) > 1:
+                    audio_data = audio_data.flatten()  # 或者 audio_data = audio_data[:, 0]
                 
-                # 如果使用GPU，将数据转移到GPU
+                print(f"处理后的录音数据形状: {audio_data.shape}")
+                
+                # 清理GPU缓存
                 if torch.cuda.is_available():
-                    with torch.cuda.device(0):  # 使用第一个GPU
-                        torch.cuda.empty_cache()  # 清理GPU缓存
+                    torch.cuda.empty_cache()
                 
-            except Exception as e:
-                print(f"处理录音数据出错: {str(e)}")
-                return ""
-            
-            try:
-                # 使用whisper进行语音识别
-                result = self.model.transcribe(
-                    audio_data,
-                    language='zh',          # 指定中文
-                    task='transcribe',      # 使用转写任务
-                    fp16=True if torch.cuda.is_available() else False,  # 使用半精度
-                    beam_size=1,            # 减少内存使用
-                    best_of=1,              # 减少内存使用
-                    temperature=0.0,        # 减少随机性
-                    compression_ratio_threshold=2.4,
-                    no_speech_threshold=0.6,
-                    condition_on_previous_text=False  # 减少内存使用
+                # 使用transformers pipeline进行识别
+                result = self.transcriber(
+                    {"sampling_rate": self.sample_rate, "raw": audio_data},  # 修改输入格式
+                    batch_size=1,
+                    generate_kwargs={
+                        "task": "transcribe",
+                        "language": "zh"
+                    }
                 )
                 
                 text = result["text"].strip()
                 return text
                 
             except Exception as e:
-                print(f"Whisper识别错误: {str(e)}")
+                print(f"语音识别错误: {str(e)}")
                 import traceback
                 print(f"详细错误信息: {traceback.format_exc()}")
                 return ""

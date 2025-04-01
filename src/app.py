@@ -571,8 +571,8 @@ def delete_assessment():
         print(f"删除评估记录时出错: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-# 初始化语音识别器
-speech_recognizer = SpeechRecognition(model_name="medium")  # 使用 medium 模型平衡性能和准确率
+# 修改初始化语音识别器的部分
+speech_recognizer = SpeechRecognition()  # 不需要传入 model_name 参数，默认使用 BELLE-2/Belle-whisper-large-v3-zh
 
 @socketio.on('start_recording')
 def handle_start_recording():
