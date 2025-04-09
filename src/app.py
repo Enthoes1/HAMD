@@ -38,7 +38,7 @@ def check_admin():
 model_config = {
     'api_key': os.getenv("DASHSCOPE_API_KEY"),
     'base_url': "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    'model': 'qwen-plus',
+    'model': 'qwen-max',
     'parameters': {
         'temperature': 0.7,      # 温度参数，控制输出的随机性，范围 0-1
         'top_p': 0.6,           # 控制输出的多样性，范围 0-1
