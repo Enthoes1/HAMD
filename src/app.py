@@ -4,6 +4,11 @@ import warnings
 from functools import wraps
 from datetime import datetime
 import json
+import base64
+import io
+import numpy as np
+import traceback
+import wave
 
 # 添加项目根目录到 Python 路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -571,40 +576,29 @@ def delete_assessment():
         print(f"删除评估记录时出错: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-# 修改初始化语音识别器的部分
-speech_recognizer = SpeechRecognition()  # 不需要传入 model_name 参数，默认使用 BELLE-2/Belle-whisper-large-v3-zh
+# 初始化语音识别器
+speech_recognizer = SpeechRecognition()
 
-@socketio.on('start_recording')
-def handle_start_recording():
-    """处理开始录音请求"""
+@socketio.on('audio_data')
+def handle_audio_data(data):
     try:
-        speech_recognizer.start_recording()
-    except Exception as e:
-        print(f"开始录音错误: {str(e)}")
-        emit('message', {
-            'type': 'message',
-            'role': 'system',
-            'content': f"录音错误：{str(e)}"
-        })
-
-@socketio.on('stop_recording')
-def handle_stop_recording():
-    """处理停止录音请求"""
-    try:
-        # 停止录音并获取识别结果
-        text = speech_recognizer.stop_recording()
+        # 解码 Base64 音频数据
+        audio_data = base64.b64decode(data)
         
-        # 发送识别结果到前端
-        emit('transcription', {
-            'text': text
-        })
+        # 将音频数据转换为 numpy 数组
+        with io.BytesIO(audio_data) as audio_io:
+            with wave.open(audio_io, 'rb') as wave_file:
+                audio_array = np.frombuffer(wave_file.readframes(wave_file.getnframes()), dtype=np.float32)
+        
+        # 使用语音识别处理音频
+        text = speech_recognizer.transcribe_audio(audio_array)
+        
+        # 发送识别结果回客户端
+        emit('transcription', {'text': text})
+        
     except Exception as e:
-        print(f"停止录音错误: {str(e)}")
-        emit('message', {
-            'type': 'message',
-            'role': 'system',
-            'content': f"录音错误：{str(e)}"
-        })
+        print(f"处理音频数据错误: {str(e)}")
+        emit('transcription', {'error': str(e)})
 
 if __name__ == '__main__':
     try:

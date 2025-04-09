@@ -3,6 +3,11 @@ import sounddevice as sd
 import numpy as np
 import torch
 import os
+import tempfile
+import soundfile as sf
+import base64
+import io
+import wave
 
 def check_gpu_status():
     """检查GPU状态"""
@@ -22,7 +27,6 @@ class SpeechRecognition:
         # 检查GPU状态
         check_gpu_status()
         
-        # 检查是否有可用的GPU
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"Using device: {self.device} for Whisper model")
         
@@ -32,10 +36,10 @@ class SpeechRecognition:
                 "automatic-speech-recognition",
                 model=model_name,
                 device=self.device,
-                token=use_auth_token  # 添加token支持
+                token=use_auth_token
             )
             
-            # 设置为中文识别
+            # 按照官方文档设置 forced_decoder_ids
             self.transcriber.model.config.forced_decoder_ids = (
                 self.transcriber.tokenizer.get_decoder_prompt_ids(
                     language="zh",
@@ -47,9 +51,6 @@ class SpeechRecognition:
             
         except Exception as e:
             print(f"加载模型出错: {str(e)}")
-            print("请确保已经登录 Hugging Face:")
-            print("1. 运行 huggingface-cli login")
-            print("2. 或者传入 use_auth_token 参数")
             raise
         
         self.recording = False
@@ -141,6 +142,73 @@ class SpeechRecognition:
             
         except Exception as e:
             print(f"录音处理错误: {str(e)}")
+            return ""
+    
+    def process_audio(self, audio_data):
+        """处理音频数据并返回识别结果"""
+        try:
+            # 解码 base64 数据
+            wav_data = base64.b64decode(audio_data)
+            
+            # 使用 wave 模块读取音频数据
+            with io.BytesIO(wav_data) as wav_io:
+                with wave.open(wav_io, 'rb') as wav_file:
+                    # 获取音频参数
+                    channels = wav_file.getnchannels()
+                    sample_width = wav_file.getsampwidth()
+                    sample_rate = wav_file.getframerate()
+                    
+                    # 读取音频数据
+                    audio_data = wav_file.readframes(wav_file.getnframes())
+                    
+                    # 转换为 numpy 数组
+                    audio_np = np.frombuffer(audio_data, dtype=np.float32)
+            
+            # 确保音频是单通道的
+            if len(audio_np.shape) > 1:
+                audio_np = audio_np.mean(axis=1)
+            
+            print(f"音频数据形状: {audio_np.shape}")
+            
+            # 使用 transformers pipeline 进行识别
+            result = self.transcriber(
+                {"sampling_rate": 16000, "raw": audio_np},
+                batch_size=1,
+                generate_kwargs={
+                    "task": "transcribe",
+                    "language": "zh"
+                }
+            )
+            
+            return result["text"].strip()
+            
+        except Exception as e:
+            print(f"语音识别错误: {str(e)}")
+            import traceback
+            print(f"详细错误信息: {traceback.format_exc()}")
+            return ""
+    
+    def transcribe_audio(self, audio_data):
+        """直接处理音频数据"""
+        try:
+            # 确保音频是单通道的
+            if len(audio_data.shape) > 1:
+                audio_data = audio_data.flatten()
+            
+            # 使用 transformers pipeline 进行识别
+            result = self.transcriber(
+                {"sampling_rate": self.sample_rate, "raw": audio_data},
+                batch_size=1,
+                generate_kwargs={
+                    "task": "transcribe",
+                    "language": "zh"
+                }
+            )
+            
+            return result["text"].strip()
+            
+        except Exception as e:
+            print(f"音频转写错误: {str(e)}")
             return ""
     
     def __del__(self):

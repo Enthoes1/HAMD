@@ -411,23 +411,135 @@
             typingIndicator.style.display = 'none';
         }
 
-        function toggleRecording() {
-            const button = document.getElementById('record-button');
-            
-            if (!isRecording) {
-                // 开始录音
-                isRecording = true;
-                button.classList.add('recording');
-                socket.emit('start_recording');
-            } else {
-                // 停止录音
-                isRecording = false;
-                button.classList.remove('recording');
-                socket.emit('stop_recording');
+        let mediaRecorder;
+        let audioChunks = [];
+        
+        // 修改录音相关代码
+        async function initializeRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        channelCount: 1,
+                        sampleRate: 16000
+                    }
+                });
+                mediaRecorder = new MediaRecorder(stream, {
+                    mimeType: 'audio/webm;codecs=opus'
+                });
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                    }
+                };
+                
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    // 转换为WAV格式
+                    const wavBlob = await convertToWav(audioBlob);
+                    const base64data = await blobToBase64(wavBlob);
+                    socket.emit('audio_data', base64data);
+                    audioChunks = [];
+                };
+                
+                return true;
+            } catch (err) {
+                console.error('麦克风访问错误:', err);
+                alert('请允许访问麦克风');
+                return false;
             }
         }
 
-        // 添加录音结果处理
+        // 添加音频格式转换函数
+        async function convertToWav(blob) {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const arrayBuffer = await blob.arrayBuffer();
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            
+            // 创建新的 AudioBuffer (16kHz, 单声道)
+            const targetSampleRate = 16000;
+            const offlineContext = new OfflineAudioContext(1, audioBuffer.duration * targetSampleRate, targetSampleRate);
+            const source = offlineContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(offlineContext.destination);
+            source.start();
+            
+            const renderedBuffer = await offlineContext.startRendering();
+            const wavData = audioBufferToWav(renderedBuffer);
+            return new Blob([wavData], { type: 'audio/wav' });
+        }
+
+        // WAV 编码函数
+        function audioBufferToWav(buffer) {
+            const numChannels = 1;
+            const sampleRate = buffer.sampleRate;
+            const format = 1; // PCM
+            const bitDepth = 32;
+            
+            const data = buffer.getChannelData(0);
+            const arrayBuffer = new ArrayBuffer(44 + data.length * 4);
+            const view = new DataView(arrayBuffer);
+            
+            // WAV 文件头
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + data.length * 4, true);
+            writeString(view, 8, 'WAVE');
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, format, true);
+            view.setUint16(22, numChannels, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * 4, true);
+            view.setUint16(32, numChannels * 4, true);
+            view.setUint16(34, bitDepth, true);
+            writeString(view, 36, 'data');
+            view.setUint32(40, data.length * 4, true);
+            
+            // 写入音频数据
+            const floatArray = new Float32Array(view.buffer, 44, data.length);
+            floatArray.set(data);
+            
+            return arrayBuffer;
+        }
+
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        }
+        
+        // 转换 Blob 为 Base64
+        function blobToBase64(blob) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        }
+        
+        // 处理录音按钮点击
+        async function toggleRecording() {
+            const button = document.getElementById('record-button');
+            
+            if (!mediaRecorder) {
+                const initialized = await initializeRecording();
+                if (!initialized) return;
+            }
+            
+            if (mediaRecorder.state === 'inactive') {
+                // 开始录音
+                audioChunks = [];
+                mediaRecorder.start();
+                button.classList.add('recording');
+            } else {
+                // 停止录音
+                mediaRecorder.stop();
+                button.classList.remove('recording');
+            }
+        }
+        
+        // 处理服务器返回的转写结果
         socket.on('transcription', function(data) {
             if (data.text) {
                 document.getElementById('user-input').value = data.text;
