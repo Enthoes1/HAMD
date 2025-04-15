@@ -299,6 +299,7 @@ def handle_message(data):
 def handle_patient_info(data):
     try:
         framework = get_framework(request.sid)
+        sid = request.sid  # 保存当前会话ID
         
         if 'id' not in data:
             print("错误：患者信息中缺少ID")
@@ -323,11 +324,18 @@ def handle_patient_info(data):
             for i, entry in enumerate(history):
                 if 'assistant' in entry:
                     role = 'system' if i == 0 else 'assistant'
-                    emit('message', {
+                    message_data = {
                         'type': 'message',
                         'role': role,
                         'content': entry['assistant']
-                    })
+                    }
+                    emit('message', message_data)
+                    
+                    # 如果是第一条系统消息，添加语音朗读
+                    if i == 0 and role == 'system':
+                        print("朗读已恢复的系统问题消息")
+                        generate_speech(entry['assistant'], sid)
+                        
                 if 'user' in entry:
                     emit('message', {
                         'type': 'message',
@@ -337,11 +345,16 @@ def handle_patient_info(data):
             
             if not history:
                 question = PromptParser.get_question(current_item.prompt)
-                emit('message', {
+                message_data = {
                     'type': 'message',
                     'role': 'system',
                     'content': question
-                })
+                }
+                emit('message', message_data)
+                
+                # 添加语音朗读
+                print("朗读首次系统问题消息")
+                generate_speech(question, sid)
         else:
             framework.set_patient_info(data)
             print(f"新用户 {data['id']} 开始评估")
@@ -357,11 +370,16 @@ def handle_patient_info(data):
             })
             
             question = PromptParser.get_question(current_item.prompt)
-            emit('message', {
+            message_data = {
                 'type': 'message',
                 'role': 'system',
                 'content': question
-            })
+            }
+            emit('message', message_data)
+            
+            # 为新用户第一条消息添加语音朗读
+            print("朗读首次系统问题消息")
+            generate_speech(question, sid)
             
     except Exception as e:
         print(f"处理患者信息错误: {str(e)}")

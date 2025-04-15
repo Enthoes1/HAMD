@@ -9,6 +9,9 @@ import base64
 import io
 import wave
 import threading
+from optimum.bettertransformer import BetterTransformer
+from transformers import WhisperProcessor
+from faster_whisper import WhisperModel
 
 def check_gpu_status():
     """检查GPU状态"""
@@ -34,7 +37,7 @@ class SpeechRecognition:
                 cls._instance = super(SpeechRecognition, cls).__new__(cls)
             return cls._instance
 
-    def __init__(self, model_name="BELLE-2/Belle-whisper-large-v3-zh", use_auth_token=None):
+    def __init__(self, model_name="Huan69/Belle-whisper-large-v3-zh-punct-fasterwhisper", use_auth_token=None):
         # 使用单例模式，确保模型只被加载一次
         with self.__class__._lock:
             if self.__class__._initialized:
@@ -44,30 +47,26 @@ class SpeechRecognition:
             # 初始化时检查一次 GPU 状态
             check_gpu_status()
             
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
-            print(f"Using device: {self.device} for Whisper model")
+            # 判断使用CPU还是GPU
+            compute_type = "float16" if torch.cuda.is_available() else "float32"
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            self.device = device
+            print(f"Using device: {device} for FasterWhisper model")
             
             try:
-                # 初始化语音识别pipeline
-                self.transcriber = pipeline(
-                    "automatic-speech-recognition",
-                    model=model_name,
-                    device=self.device,
-                    token=use_auth_token
-                )
-                
-                # 按照官方文档设置 forced_decoder_ids
-                self.transcriber.model.config.forced_decoder_ids = (
-                    self.transcriber.tokenizer.get_decoder_prompt_ids(
-                        language="zh",
-                        task="transcribe"
-                    )
+                # 使用FasterWhisper初始化模型
+                self.model = WhisperModel(
+                    model_name,
+                    device=device,
+                    compute_type=compute_type
                 )
                 
                 print(f"Successfully loaded {model_name} model")
                 
             except Exception as e:
                 print(f"加载模型出错: {str(e)}")
+                import traceback
+                print(traceback.format_exc())
                 raise
             
             self.recording = False
@@ -141,18 +140,18 @@ class SpeechRecognition:
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
                 
-                # 使用transformers pipeline进行识别
-                result = self.transcriber(
-                    {"sampling_rate": self.sample_rate, "raw": audio_data},  # 修改输入格式
-                    batch_size=1,
-                    generate_kwargs={
-                        "task": "transcribe",
-                        "language": "zh"
-                    }
+                # 使用 FasterWhisper 进行识别，禁用 VAD
+                segments, info = self.model.transcribe(
+                    audio_data, 
+                    language="zh",
+                    task="transcribe", 
+                    beam_size=5,
+                    vad_filter=False  # 禁用 VAD，避免 onnxruntime 依赖问题
                 )
                 
-                text = result["text"].strip()
-                return text
+                # 提取文本
+                text = " ".join([segment.text for segment in segments])
+                return text.strip()
                 
             except Exception as e:
                 print(f"语音识别错误: {str(e)}")
@@ -189,18 +188,20 @@ class SpeechRecognition:
                 audio_np = audio_np.mean(axis=1)
             
             print(f"音频数据形状: {audio_np.shape}")
+            print(f"音频采样率: {sample_rate}")
             
-            # 使用 transformers pipeline 进行识别
-            result = self.transcriber(
-                {"sampling_rate": 16000, "raw": audio_np},
-                batch_size=1,
-                generate_kwargs={
-                    "task": "transcribe",
-                    "language": "zh"
-                }
+            # 使用 FasterWhisper 进行识别，禁用 VAD
+            segments, info = self.model.transcribe(
+                audio_np, 
+                language="zh",
+                task="transcribe", 
+                beam_size=5,
+                vad_filter=False  # 禁用 VAD，避免 onnxruntime 依赖问题
             )
             
-            return result["text"].strip()
+            # 提取文本
+            text = " ".join([segment.text for segment in segments])
+            return text.strip()
             
         except Exception as e:
             print(f"语音识别错误: {str(e)}")
@@ -215,17 +216,18 @@ class SpeechRecognition:
             if len(audio_data.shape) > 1:
                 audio_data = audio_data.flatten()
             
-            # 使用 transformers pipeline 进行识别
-            result = self.transcriber(
-                {"sampling_rate": self.sample_rate, "raw": audio_data},
-                batch_size=1,
-                generate_kwargs={
-                    "task": "transcribe",
-                    "language": "zh"
-                }
+            # 使用 FasterWhisper 进行识别，禁用 VAD
+            segments, info = self.model.transcribe(
+                audio_data, 
+                language="zh",
+                task="transcribe", 
+                beam_size=5,
+                vad_filter=False  # 禁用 VAD，避免 onnxruntime 依赖问题
             )
             
-            return result["text"].strip()
+            # 提取文本
+            text = " ".join([segment.text for segment in segments])
+            return text.strip()
             
         except Exception as e:
             print(f"音频转写错误: {str(e)}")

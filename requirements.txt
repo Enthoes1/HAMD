@@ -7,4 +7,13 @@ eventlet==0.33.3
 gevent==23.9.1
 gevent-websocket==0.10.1
 Werkzeug==2.3.7
-edge-tts>=6.1.9 
+edge-tts>=6.1.9
+faster-whisper>=0.9.0
+optimum>=1.13.2
+transformers>=4.34.0
+sounddevice>=0.4.6
+soundfile>=0.12.1
+numpy>=1.24.0
+# onnxruntime>=1.15.1  # 取消注释以启用 VAD
+# 如果使用 CUDA，可以使用 onnxruntime-gpu 替代
+# onnxruntime-gpu>=1.15.1 
