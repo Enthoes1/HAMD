@@ -8,6 +8,7 @@ import soundfile as sf
 import base64
 import io
 import wave
+import threading
 
 def check_gpu_status():
     """检查GPU状态"""
@@ -23,40 +24,59 @@ def check_gpu_status():
     print("=================\n")
 
 class SpeechRecognition:
+    _instance = None
+    _lock = threading.Lock()
+    _initialized = False
+
+    def __new__(cls, *args, **kwargs):
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super(SpeechRecognition, cls).__new__(cls)
+            return cls._instance
+
     def __init__(self, model_name="BELLE-2/Belle-whisper-large-v3-zh", use_auth_token=None):
-        # 检查GPU状态
-        check_gpu_status()
-        
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"Using device: {self.device} for Whisper model")
-        
-        try:
-            # 初始化语音识别pipeline
-            self.transcriber = pipeline(
-                "automatic-speech-recognition",
-                model=model_name,
-                device=self.device,
-                token=use_auth_token
-            )
+        # 使用单例模式，确保模型只被加载一次
+        with self.__class__._lock:
+            if self.__class__._initialized:
+                return
+                
+            print("初始化语音识别模型...")
+            # 初始化时检查一次 GPU 状态
+            check_gpu_status()
             
-            # 按照官方文档设置 forced_decoder_ids
-            self.transcriber.model.config.forced_decoder_ids = (
-                self.transcriber.tokenizer.get_decoder_prompt_ids(
-                    language="zh",
-                    task="transcribe"
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            print(f"Using device: {self.device} for Whisper model")
+            
+            try:
+                # 初始化语音识别pipeline
+                self.transcriber = pipeline(
+                    "automatic-speech-recognition",
+                    model=model_name,
+                    device=self.device,
+                    token=use_auth_token
                 )
-            )
+                
+                # 按照官方文档设置 forced_decoder_ids
+                self.transcriber.model.config.forced_decoder_ids = (
+                    self.transcriber.tokenizer.get_decoder_prompt_ids(
+                        language="zh",
+                        task="transcribe"
+                    )
+                )
+                
+                print(f"Successfully loaded {model_name} model")
+                
+            except Exception as e:
+                print(f"加载模型出错: {str(e)}")
+                raise
             
-            print(f"Successfully loaded {model_name} model")
+            self.recording = False
+            self.sample_rate = 16000
+            self.audio_data = []
+            self.stream = None
             
-        except Exception as e:
-            print(f"加载模型出错: {str(e)}")
-            raise
-        
-        self.recording = False
-        self.sample_rate = 16000
-        self.audio_data = []
-        self.stream = None
+            # 标记为已初始化
+            self.__class__._initialized = True
         
     def start_recording(self):
         """开始录音"""

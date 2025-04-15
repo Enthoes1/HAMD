@@ -28,8 +28,9 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'hamd2024_secure_key_!@#$%^&*()'
 init_socketio(app)
 
-# 初始化语音合成器
+# 初始化语音合成器和语音识别器
 tts = TextToSpeech()
+speech_recognizer = SpeechRecognition()
 
 # 配置访问密码
 ACCESS_CODE = "hamd2024"  # 普通用户密码
@@ -636,9 +637,6 @@ def delete_assessment():
         print(f"删除评估记录时出错: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-# 初始化语音识别器
-speech_recognizer = SpeechRecognition()
-
 @socketio.on('audio_data')
 def handle_audio_data(data):
     """处理音频数据"""
@@ -646,8 +644,7 @@ def handle_audio_data(data):
         # 通知客户端停止语音播放
         socketio.emit('stop_speech', room=request.sid)
         
-        # 处理语音识别
-        speech_recognizer = SpeechRecognition()
+        # 处理语音识别，使用全局变量
         text = speech_recognizer.process_audio(data)
         
         if text:
