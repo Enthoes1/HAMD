@@ -265,6 +265,18 @@
             border-radius: 4px;
             margin-bottom: 1rem;
         }
+        
+        /* 播放按钮样式 */
+        .play-button {
+            display: inline-block;
+            padding: 5px 10px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
@@ -303,7 +315,13 @@
         const sendButton = document.getElementById('send-button');
         const typingIndicator = document.querySelector('.typing');
         let isRecording = false;
-
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let mediaStream = null;
+        
+        // 音频相关变量
+        let currentAudio = null;
+        
         // 添加可靠的滚动到底部函数
         function scrollToBottom(smooth = true) {
             const container = document.querySelector('.container');
@@ -358,6 +376,30 @@
             console.log('Disconnected from server');
         });
 
+        // 监听语音数据
+        socket.on('speech', (data) => {
+            console.log('收到语音数据', data ? '数据存在' : '数据不存在');
+            if (data && data.audio) {
+                console.log('音频数据长度:', data.audio.length);
+                
+                // 如果正在录音，不播放语音
+                if (isRecording) {
+                    console.log('正在录音，不播放语音');
+                    return;
+                }
+                
+                playAudio(data.audio);
+            } else {
+                console.error('未收到有效的音频数据');
+            }
+        });
+        
+        // 监听停止语音的指令
+        socket.on('stop_speech', () => {
+            console.log('收到停止语音指令');
+            stopAudio();
+        });
+
         socket.on('message', (data) => {
             hideTypingIndicator();
             
@@ -379,9 +421,78 @@
             scrollToBottom();
         });
 
+        // 播放音频
+        function playAudio(base64Audio) {
+            try {
+                console.log('开始播放音频');
+                
+                // 停止当前播放的音频
+                stopAudio();
+                
+                // 创建音频元素
+                const audio = new Audio();
+                audio.src = 'data:audio/mp3;base64,' + base64Audio;
+                
+                // 设置事件处理
+                audio.onerror = (e) => {
+                    console.error('音频播放错误:', e);
+                };
+                
+                audio.onloadeddata = () => {
+                    console.log('音频已加载，准备播放');
+                };
+                
+                audio.onended = () => {
+                    console.log('音频播放完成');
+                    currentAudio = null;
+                };
+                
+                // 保存当前音频引用
+                currentAudio = audio;
+                
+                // 尝试播放
+                audio.play().then(() => {
+                    console.log('音频开始播放');
+                }).catch(err => {
+                    console.error('自动播放失败:', err);
+                    
+                    // 显示播放按钮
+                    const playButton = document.createElement('button');
+                    playButton.textContent = '点击播放语音';
+                    playButton.className = 'play-button';
+                    playButton.onclick = () => {
+                        audio.play();
+                        playButton.remove();
+                    };
+                    
+                    document.querySelector('.chat-container').appendChild(playButton);
+                });
+            } catch (error) {
+                console.error('播放音频错误:', error);
+            }
+        }
+        
+        // 停止当前播放的音频
+        function stopAudio() {
+            if (currentAudio) {
+                console.log('停止当前音频');
+                currentAudio.pause();
+                currentAudio.currentTime = 0;
+                currentAudio = null;
+            }
+            
+            // 移除所有播放按钮
+            document.querySelectorAll('.play-button').forEach(button => {
+                button.remove();
+            });
+        }
+
         function sendMessage() {
             const message = userInput.value.trim();
             if (!message) return;
+            
+            // 停止当前播放的音频
+            stopAudio();
             
             addMessage(message, 'user');
             showTypingIndicator();
@@ -410,19 +521,24 @@
         function hideTypingIndicator() {
             typingIndicator.style.display = 'none';
         }
-
-        let mediaRecorder;
-        let audioChunks = [];
         
-        // 修改录音相关代码
+        // 录音相关功能
         async function initializeRecording() {
             try {
+                // 停止当前播放的音频
+                stopAudio();
+                
+                console.log('初始化麦克风');
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     audio: {
                         channelCount: 1,
                         sampleRate: 16000
                     }
                 });
+                
+                // 保存流引用，以便后续关闭
+                mediaStream = stream;
+                
                 mediaRecorder = new MediaRecorder(stream, {
                     mimeType: 'audio/webm;codecs=opus'
                 });
@@ -434,12 +550,22 @@
                 };
                 
                 mediaRecorder.onstop = async () => {
+                    console.log('录音已停止，处理录音数据');
+                    isRecording = false;
+                    
                     const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
                     // 转换为WAV格式
                     const wavBlob = await convertToWav(audioBlob);
                     const base64data = await blobToBase64(wavBlob);
+                    
+                    // 发送音频数据到服务器
                     socket.emit('audio_data', base64data);
+                    
+                    // 清空录音数据
                     audioChunks = [];
+                    
+                    // 关闭麦克风
+                    releaseMediaStream();
                 };
                 
                 return true;
@@ -447,6 +573,45 @@
                 console.error('麦克风访问错误:', err);
                 alert('请允许访问麦克风');
                 return false;
+            }
+        }
+        
+        // 释放麦克风资源
+        function releaseMediaStream() {
+            if (mediaStream) {
+                console.log('释放麦克风资源');
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+                mediaRecorder = null;
+            }
+        }
+
+        async function toggleRecording() {
+            const button = document.getElementById('record-button');
+            
+            if (isRecording) {
+                // 如果正在录音，停止录音
+                console.log('停止录音');
+                if (mediaRecorder && mediaRecorder.state === 'recording') {
+                    mediaRecorder.stop();
+                }
+                button.classList.remove('recording');
+            } else {
+                // 如果未录音，开始录音
+                console.log('开始录音');
+                
+                // 初始化录音设备
+                const initialized = await initializeRecording();
+                if (!initialized) return;
+                
+                // 停止当前播放的音频
+                stopAudio();
+                
+                // 开始录音
+                isRecording = true;
+                audioChunks = [];
+                mediaRecorder.start();
+                button.classList.add('recording');
             }
         }
 
@@ -518,27 +683,6 @@
             });
         }
         
-        // 处理录音按钮点击
-        async function toggleRecording() {
-            const button = document.getElementById('record-button');
-            
-            if (!mediaRecorder) {
-                const initialized = await initializeRecording();
-                if (!initialized) return;
-            }
-            
-            if (mediaRecorder.state === 'inactive') {
-                // 开始录音
-                audioChunks = [];
-                mediaRecorder.start();
-                button.classList.add('recording');
-            } else {
-                // 停止录音
-                mediaRecorder.stop();
-                button.classList.remove('recording');
-            }
-        }
-        
         // 处理服务器返回的转写结果
         socket.on('transcription', function(data) {
             if (data.text) {
@@ -567,6 +711,12 @@
             } else {
                 link.classList.remove('active');
             }
+        });
+        
+        // 页面关闭时释放资源
+        window.addEventListener('beforeunload', () => {
+            stopAudio();
+            releaseMediaStream();
         });
     </script>
 </body>

@@ -20,12 +20,16 @@ from core.assessment_framework import AssessmentFramework
 from utils.globals import socketio, init_socketio
 from utils.prompt_parser import PromptParser
 from speech.speech_recognition import SpeechRecognition
+from speech.text_to_speech import TextToSpeech
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'hamd2024_secure_key_!@#$%^&*()'
 init_socketio(app)
+
+# 初始化语音合成器
+tts = TextToSpeech()
 
 # 配置访问密码
 ACCESS_CODE = "hamd2024"  # 普通用户密码
@@ -154,6 +158,43 @@ def handle_disconnect():
             framework.save_assessment_result()
         del user_frameworks[sid]
 
+@socketio.on('message', namespace='/')
+def handle_system_message(data):
+    """处理系统消息，生成语音"""
+    if data.get('content'):
+        generate_speech(data['content'], request.sid)
+
+def generate_speech(text, sid):
+    """生成语音并发送到客户端"""
+    try:
+        print(f"开始生成语音: {text[:30]}...")
+        
+        # 使用后台任务生成语音
+        def generate_audio():
+            try:
+                # 生成语音
+                audio_data = tts.speak(text)
+                if audio_data:
+                    print(f"语音生成成功，数据长度: {len(audio_data)}")
+                    # 发送给客户端
+                    socketio.emit('speech', {
+                        'audio': audio_data
+                    }, room=sid)
+                else:
+                    print("语音生成失败")
+            except Exception as e:
+                print(f"后台生成语音错误: {str(e)}")
+                import traceback
+                print(traceback.format_exc())
+        
+        # 在后台线程中生成语音
+        socketio.start_background_task(generate_audio)
+        
+    except Exception as e:
+        print(f"语音生成错误: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+
 @socketio.on('user_input')
 def handle_message(data):
     try:
@@ -199,30 +240,49 @@ def handle_message(data):
                         'assistant': question
                     })
                     
-                    socketio.emit('message', {
+                    # 发送系统消息，将触发语音生成
+                    message_data = {
                         'type': 'message',
                         'role': 'system',
                         'content': question
-                    }, room=sid)  # 使用保存的sid
+                    }
+                    socketio.emit('message', message_data, room=sid)
+                    
+                    # 单独触发语音生成，确保系统消息被朗读
+                    generate_speech(question, sid)
                 else:
                     print("所有条目评估完成")
                     framework.save_assessment_result()
                     
-                    socketio.emit('message', {
+                    completion_message = '评估已完成，感谢您的参与！您现在可以点击右上角的"PHQ-9自评"按钮进行自评。'
+                    
+                    # 发送完成消息，将触发语音生成
+                    message_data = {
                         'type': 'assessment_complete',
-                        'content': '评估已完成，感谢您的参与！您现在可以点击右上角的"PHQ-9自评"按钮进行自评。'
-                    }, room=sid)  # 使用保存的sid
+                        'content': completion_message
+                    }
+                    socketio.emit('message', message_data, room=sid)
+                    
+                    # 单独触发语音生成，确保完成消息被朗读
+                    generate_speech(completion_message, sid)
                     
                     print(f"患者 {framework.patient_info['id']} 的评估已完成")
                     print(f"总评分项目数: {len(framework.scores)}")
                     
             else:
                 if result.get('show_response', True):
-                    socketio.emit('message', {
+                    response = result['data']
+                    
+                    # 发送助手消息，将触发语音生成
+                    message_data = {
                         'type': 'message',
                         'role': 'assistant',
-                        'content': result['data']
-                    }, room=sid)  # 使用保存的sid
+                        'content': response
+                    }
+                    socketio.emit('message', message_data, room=sid)
+                    
+                    # 单独触发语音生成，确保助手消息被朗读
+                    generate_speech(response, sid)
         
         socketio.start_background_task(async_process)
         
@@ -581,24 +641,30 @@ speech_recognizer = SpeechRecognition()
 
 @socketio.on('audio_data')
 def handle_audio_data(data):
+    """处理音频数据"""
     try:
-        # 解码 Base64 音频数据
-        audio_data = base64.b64decode(data)
+        # 通知客户端停止语音播放
+        socketio.emit('stop_speech', room=request.sid)
         
-        # 将音频数据转换为 numpy 数组
-        with io.BytesIO(audio_data) as audio_io:
-            with wave.open(audio_io, 'rb') as wave_file:
-                audio_array = np.frombuffer(wave_file.readframes(wave_file.getnframes()), dtype=np.float32)
+        # 处理语音识别
+        speech_recognizer = SpeechRecognition()
+        text = speech_recognizer.process_audio(data)
         
-        # 使用语音识别处理音频
-        text = speech_recognizer.transcribe_audio(audio_array)
-        
-        # 发送识别结果回客户端
-        emit('transcription', {'text': text})
-        
+        if text:
+            print(f"语音识别结果: {text}")
+            socketio.emit('transcription', {
+                'text': text
+            })
+        else:
+            print("语音识别未返回结果")
     except Exception as e:
-        print(f"处理音频数据错误: {str(e)}")
-        emit('transcription', {'error': str(e)})
+        print(f"音频处理错误: {str(e)}")
+        print(traceback.format_exc())
+        emit('message', {
+            'type': 'message',
+            'role': 'system',
+            'content': f"音频处理错误：{str(e)}"
+        })
 
 if __name__ == '__main__':
     try:
