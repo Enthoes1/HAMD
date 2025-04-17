@@ -54,11 +54,21 @@ class SpeechRecognition:
             print(f"Using device: {device} for FasterWhisper model")
             
             try:
+                # 安装 onnxruntime 以支持 VAD 功能
+                try:
+                    import onnxruntime
+                    self.vad_available = True
+                    print("onnxruntime 已安装，启用 VAD 功能")
+                except ImportError:
+                    self.vad_available = False
+                    print("警告: onnxruntime 未安装，VAD 功能将被禁用")
+                
                 # 使用FasterWhisper初始化模型
                 self.model = WhisperModel(
                     model_name,
                     device=device,
-                    compute_type=compute_type
+                    compute_type=compute_type,
+                    download_root=None  # 使用默认下载路径
                 )
                 
                 print(f"Successfully loaded {model_name} model")
@@ -140,13 +150,18 @@ class SpeechRecognition:
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
                 
-                # 使用 FasterWhisper 进行识别，禁用 VAD
+                # 使用 FasterWhisper 进行识别
                 segments, info = self.model.transcribe(
                     audio_data, 
                     language="zh",
                     task="transcribe", 
                     beam_size=5,
-                    vad_filter=False  # 禁用 VAD，避免 onnxruntime 依赖问题
+                    vad_filter=self.vad_available,  # 根据 onnxruntime 是否可用决定是否启用 VAD
+                    vad_parameters={"threshold": 0.5},  # VAD 灵敏度阈值
+                    initial_prompt=None,  # 可以提供初始提示来引导转录
+                    word_timestamps=False,  # 是否生成单词级时间戳
+                    condition_on_previous_text=True,  # 是否基于之前的文本进行条件化生成
+                    temperature=0.0  # 使用确定性解码
                 )
                 
                 # 提取文本
@@ -190,13 +205,18 @@ class SpeechRecognition:
             print(f"音频数据形状: {audio_np.shape}")
             print(f"音频采样率: {sample_rate}")
             
-            # 使用 FasterWhisper 进行识别，禁用 VAD
+            # 使用 FasterWhisper 进行识别
             segments, info = self.model.transcribe(
                 audio_np, 
                 language="zh",
                 task="transcribe", 
                 beam_size=5,
-                vad_filter=False  # 禁用 VAD，避免 onnxruntime 依赖问题
+                vad_filter=self.vad_available,  # 根据 onnxruntime 是否可用决定是否启用 VAD
+                vad_parameters={"threshold": 0.5},  # VAD 灵敏度阈值
+                initial_prompt=None,  # 可以提供初始提示来引导转录
+                word_timestamps=False,  # 是否生成单词级时间戳
+                condition_on_previous_text=True,  # 是否基于之前的文本进行条件化生成
+                temperature=0.0  # 使用确定性解码
             )
             
             # 提取文本
@@ -216,13 +236,18 @@ class SpeechRecognition:
             if len(audio_data.shape) > 1:
                 audio_data = audio_data.flatten()
             
-            # 使用 FasterWhisper 进行识别，禁用 VAD
+            # 使用 FasterWhisper 进行识别
             segments, info = self.model.transcribe(
                 audio_data, 
                 language="zh",
                 task="transcribe", 
                 beam_size=5,
-                vad_filter=False  # 禁用 VAD，避免 onnxruntime 依赖问题
+                vad_filter=self.vad_available,  # 根据 onnxruntime 是否可用决定是否启用 VAD
+                vad_parameters={"threshold": 0.5},  # VAD 灵敏度阈值
+                initial_prompt=None,  # 可以提供初始提示来引导转录
+                word_timestamps=False,  # 是否生成单词级时间戳
+                condition_on_previous_text=True,  # 是否基于之前的文本进行条件化生成
+                temperature=0.0  # 使用确定性解码
             )
             
             # 提取文本

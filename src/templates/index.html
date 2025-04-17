@@ -318,9 +318,14 @@
         let mediaRecorder = null;
         let audioChunks = [];
         let mediaStream = null;
-        
-        // 音频相关变量
         let currentAudio = null;
+        let silenceDetector = null;
+        let silenceTimer = null;
+        let silenceThreshold = -20; // 静音阈值，调整为适中值
+        let silenceTimeout = 1500;  // 静音超时时间
+        let autoRecordEnabled = true; // 是否启用自动录音
+        let consecutiveSilenceCount = 0; // 连续检测到静音的次数
+        let requiredSilenceCount = 1; // 需要连续检测到的静音次数
         
         // 添加可靠的滚动到底部函数
         function scrollToBottom(smooth = true) {
@@ -445,6 +450,12 @@
                 audio.onended = () => {
                     console.log('音频播放完成');
                     currentAudio = null;
+                    
+                    // 音频播放完毕后自动开始录音
+                    if (autoRecordEnabled) {
+                        console.log('音频播放结束，自动开始录音');
+                        setTimeout(() => startRecording(), 1); // 延迟500ms开始录音
+                    }
                 };
                 
                 // 保存当前音频引用
@@ -532,7 +543,10 @@
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     audio: {
                         channelCount: 1,
-                        sampleRate: 16000
+                        sampleRate: 16000,
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
                     }
                 });
                 
@@ -540,33 +554,61 @@
                 mediaStream = stream;
                 
                 mediaRecorder = new MediaRecorder(stream, {
-                    mimeType: 'audio/webm;codecs=opus'
+                    mimeType: 'audio/webm;codecs=opus',
+                    audioBitsPerSecond: 16000
                 });
                 
+                // 设置数据可用性处理
                 mediaRecorder.ondataavailable = (event) => {
                     if (event.data.size > 0) {
                         audioChunks.push(event.data);
                     }
                 };
                 
+                // 设置录音停止处理
                 mediaRecorder.onstop = async () => {
                     console.log('录音已停止，处理录音数据');
                     isRecording = false;
                     
-                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                    // 转换为WAV格式
-                    const wavBlob = await convertToWav(audioBlob);
-                    const base64data = await blobToBase64(wavBlob);
+                    // 更新UI
+                    const button = document.getElementById('record-button');
+                    button.classList.remove('recording');
                     
-                    // 发送音频数据到服务器
-                    socket.emit('audio_data', base64data);
-                    
-                    // 清空录音数据
-                    audioChunks = [];
+                    // 如果有录音数据，则处理
+                    if (audioChunks.length > 0) {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        // 转换为WAV格式
+                        const wavBlob = await convertToWav(audioBlob);
+                        const base64data = await blobToBase64(wavBlob);
+                        
+                        // 发送音频数据到服务器
+                        socket.emit('audio_data', base64data);
+                        
+                        // 清空录音数据
+                        audioChunks = [];
+                    }
                     
                     // 关闭麦克风
                     releaseMediaStream();
+                    
+                    // 清理静音检测
+                    cleanupSilenceDetection();
                 };
+                
+                // 设置录音开始处理
+                mediaRecorder.onstart = () => {
+                    console.log('录音开始');
+                    // 启动定时器，如果30秒内没检测到静音结束，强制结束录音
+                    silenceTimer = setTimeout(() => {
+                        console.log('录音时间过长，自动停止');
+                        if (mediaRecorder && mediaRecorder.state === 'recording') {
+                            mediaRecorder.stop();
+                        }
+                    }, 30000); // 30秒最大录音时间
+                };
+                
+                // 创建静音检测
+                setupSilenceDetection(stream);
                 
                 return true;
             } catch (err) {
@@ -586,32 +628,152 @@
             }
         }
 
-        async function toggleRecording() {
-            const button = document.getElementById('record-button');
-            
-            if (isRecording) {
-                // 如果正在录音，停止录音
-                console.log('停止录音');
-                if (mediaRecorder && mediaRecorder.state === 'recording') {
-                    mediaRecorder.stop();
+        // 设置静音检测
+        function setupSilenceDetection(stream) {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const analyser = audioContext.createAnalyser();
+                const microphone = audioContext.createMediaStreamSource(stream);
+                const scriptProcessor = audioContext.createScriptProcessor(2048, 1, 1);
+                
+                analyser.smoothingTimeConstant = 0.8;
+                analyser.fftSize = 1024;
+                
+                microphone.connect(analyser);
+                analyser.connect(scriptProcessor);
+                scriptProcessor.connect(audioContext.destination);
+                
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+                
+                let silenceStart = null;
+                let isSpeaking = false;
+                
+                scriptProcessor.onaudioprocess = function() {
+                    analyser.getByteFrequencyData(dataArray);
+                    
+                    // 计算音量
+                    let sum = 0;
+                    for(let i = 0; i < bufferLength; i++) {
+                        sum += dataArray[i];
+                    }
+                    
+                    const average = sum / bufferLength;
+                    const volume = average / 255;  // 归一化为0-1
+                    const dbLevel = volume ? 20 * Math.log10(volume) : -100; // 转换为分贝
+                    
+                    // 显示音量指示器
+                    console.log(`音量: ${Math.round(dbLevel)} dB`);
+                    
+                    // 检测是否有声音
+                    if (dbLevel > silenceThreshold) {
+                        if (!isSpeaking) {
+                            console.log('检测到说话开始');
+                            isSpeaking = true;
+                        }
+                        silenceStart = null; // 重置静音计时器
+                        consecutiveSilenceCount = 0; // 重置连续静音计数
+                    } else {
+                        // 如果检测到静音
+                        consecutiveSilenceCount++; // 增加连续静音计数
+                        console.log(`连续静音计数: ${consecutiveSilenceCount}/${requiredSilenceCount}`);
+                        
+                        // 只有连续多次检测到静音才开始计时
+                        if (consecutiveSilenceCount >= requiredSilenceCount) {
+                            if (silenceStart === null) {
+                                silenceStart = Date.now();
+                                console.log('检测到持续静音开始');
+                            } else if (Date.now() - silenceStart > silenceTimeout) {
+                                console.log('检测到静音超过阈值，自动停止录音');
+                                isSpeaking = false;
+                                silenceStart = null;
+                                consecutiveSilenceCount = 0;
+                                
+                                // 如果静音超过阈值，自动停止录音
+                                if (mediaRecorder && mediaRecorder.state === 'recording') {
+                                    console.log('执行自动停止录音');
+                                    mediaRecorder.stop();
+                                }
+                            }
+                        }
+                    }
+                };
+                
+                // 保存引用以便清理
+                silenceDetector = {
+                    audioContext,
+                    analyser,
+                    microphone,
+                    scriptProcessor
+                };
+                
+            } catch (error) {
+                console.error('设置静音检测时出错:', error);
+            }
+        }
+        
+        // 清理静音检测
+        function cleanupSilenceDetection() {
+            if (silenceDetector) {
+                try {
+                    silenceDetector.scriptProcessor.disconnect();
+                    silenceDetector.analyser.disconnect();
+                    silenceDetector.microphone.disconnect();
+                    silenceDetector.audioContext.close();
+                } catch (error) {
+                    console.error('清理静音检测时出错:', error);
                 }
-                button.classList.remove('recording');
+                silenceDetector = null;
+            }
+            
+            if (silenceTimer) {
+                clearTimeout(silenceTimer);
+                silenceTimer = null;
+            }
+        }
+        
+        // 开始录音
+        async function startRecording() {
+            if (isRecording) {
+                console.log('已经在录音中，忽略开始录音请求');
+                return;
+            }
+            
+            console.log('开始录音');
+            
+            // 初始化录音设备
+            const initialized = await initializeRecording();
+            if (!initialized) return;
+            
+            // 更新UI
+            const button = document.getElementById('record-button');
+            button.classList.add('recording');
+            
+            // 开始录音
+            isRecording = true;
+            audioChunks = [];
+            mediaRecorder.start();
+        }
+        
+        // 停止录音
+        function stopRecording() {
+            if (!isRecording) {
+                console.log('没有在录音，忽略停止录音请求');
+                return;
+            }
+            
+            console.log('停止录音');
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            }
+        }
+
+        // 重写录音按钮点击处理函数
+        async function toggleRecording() {
+            if (isRecording) {
+                stopRecording();
             } else {
-                // 如果未录音，开始录音
-                console.log('开始录音');
-                
-                // 初始化录音设备
-                const initialized = await initializeRecording();
-                if (!initialized) return;
-                
-                // 停止当前播放的音频
-                stopAudio();
-                
-                // 开始录音
-                isRecording = true;
-                audioChunks = [];
-                mediaRecorder.start();
-                button.classList.add('recording');
+                startRecording();
             }
         }
 
@@ -687,6 +849,9 @@
         socket.on('transcription', function(data) {
             if (data.text) {
                 document.getElementById('user-input').value = data.text;
+                
+                // 自动发送消息
+                sendMessage();
             }
         });
 

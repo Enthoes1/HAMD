@@ -14,6 +14,6 @@ transformers>=4.34.0
 sounddevice>=0.4.6
 soundfile>=0.12.1
 numpy>=1.24.0
-# onnxruntime>=1.15.1  # 取消注释以启用 VAD
+onnxruntime>=1.15.1
 # 如果使用 CUDA，可以使用 onnxruntime-gpu 替代
 # onnxruntime-gpu>=1.15.1 
