@@ -277,6 +277,77 @@
             cursor: pointer;
             margin-top: 5px;
         }
+
+        /* 开关按钮样式 */
+        .voice-mode-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            margin-bottom: 1rem;
+            padding: 0.5rem;
+        }
+        
+        .voice-mode-toggle span {
+            margin-right: 0.5rem;
+            font-size: 14px;
+            color: #555;
+        }
+        
+        /* 开关样式 */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+        
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+        }
+        
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+        }
+        
+        input:checked + .slider {
+            background-color: #2196F3;
+        }
+        
+        input:focus + .slider {
+            box-shadow: 0 0 1px #2196F3;
+        }
+        
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+        
+        .slider.round {
+            border-radius: 24px;
+        }
+        
+        .slider.round:before {
+            border-radius: 50%;
+        }
     </style>
 </head>
 <body>
@@ -290,6 +361,13 @@
     </div>
 
     <div class="container">
+        <div class="voice-mode-toggle">
+            <span>语音模式：</span>
+            <label class="switch">
+                <input type="checkbox" id="voice-mode-toggle" checked>
+                <span class="slider round"></span>
+            </label>
+        </div>
         <div class="chat-container">
             <div id="chat-messages"></div>
             <div class="typing">
@@ -314,6 +392,7 @@
         const userInput = document.getElementById('user-input');
         const sendButton = document.getElementById('send-button');
         const typingIndicator = document.querySelector('.typing');
+        const voiceModeToggle = document.getElementById('voice-mode-toggle');
         let isRecording = false;
         let mediaRecorder = null;
         let audioChunks = [];
@@ -326,6 +405,24 @@
         let autoRecordEnabled = true; // 是否启用自动录音
         let consecutiveSilenceCount = 0; // 连续检测到静音的次数
         let requiredSilenceCount = 1; // 需要连续检测到的静音次数
+        
+        // 从本地存储恢复语音模式设置
+        if (localStorage.getItem('voiceMode') === 'false') {
+            voiceModeToggle.checked = false;
+            autoRecordEnabled = false;
+        }
+        
+        // 监听语音模式开关变化
+        voiceModeToggle.addEventListener('change', function() {
+            autoRecordEnabled = this.checked;
+            localStorage.setItem('voiceMode', autoRecordEnabled);
+            console.log('语音模式已' + (autoRecordEnabled ? '启用' : '禁用'));
+            
+            // 如果禁用语音模式，确保停止当前可能进行的录音
+            if (!autoRecordEnabled && isRecording) {
+                stopRecording();
+            }
+        });
         
         // 添加可靠的滚动到底部函数
         function scrollToBottom(smooth = true) {
@@ -451,10 +548,14 @@
                     console.log('音频播放完成');
                     currentAudio = null;
                     
-                    // 音频播放完毕后自动开始录音
+                    // 音频播放完毕后自动开始录音（如果语音模式已启用）
                     if (autoRecordEnabled) {
-                        console.log('音频播放结束，自动开始录音');
-                        setTimeout(() => startRecording(), 1); // 延迟500ms开始录音
+                        console.log('语音模式已启用，自动开始录音');
+                        setTimeout(() => startRecording(), 1); // 立即开始录音
+                    } else {
+                        console.log('语音模式已禁用，不自动开始录音');
+                        // 将焦点放在输入框上
+                        userInput.focus();
                     }
                 };
                 
