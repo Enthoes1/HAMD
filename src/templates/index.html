@@ -400,11 +400,14 @@
         let currentAudio = null;
         let silenceDetector = null;
         let silenceTimer = null;
-        let silenceThreshold = -20; // 静音阈值，调整为适中值
+        let silenceThreshold = -25; // 调整为更合理的静音阈值
         let silenceTimeout = 1500;  // 静音超时时间
         let autoRecordEnabled = true; // 是否启用自动录音
         let consecutiveSilenceCount = 0; // 连续检测到静音的次数
         let requiredSilenceCount = 1; // 需要连续检测到的静音次数
+        let userHasSpoken = false; // 新增：标记用户是否已经开始说话
+        let consecutiveSpeakingCount = 0; // 新增：连续检测到说话的次数
+        let requiredSpeakingCount = 3; // 新增：需要连续检测到说话的次数才认为用户开始说话
         
         // 从本地存储恢复语音模式设置
         if (localStorage.getItem('voiceMode') === 'false') {
@@ -699,13 +702,17 @@
                 // 设置录音开始处理
                 mediaRecorder.onstart = () => {
                     console.log('录音开始');
-                    // 启动定时器，如果30秒内没检测到静音结束，强制结束录音
+                    // 重置用户说话状态
+                    userHasSpoken = false;
+                    consecutiveSpeakingCount = 0;
+                    
+                    // 启动定时器，如果60秒内没有完成录音，强制结束录音
                     silenceTimer = setTimeout(() => {
                         console.log('录音时间过长，自动停止');
                         if (mediaRecorder && mediaRecorder.state === 'recording') {
                             mediaRecorder.stop();
                         }
-                    }, 30000); // 30秒最大录音时间
+                    }, 60000); // 60秒最大录音时间
                 };
                 
                 // 创建静音检测
@@ -750,6 +757,11 @@
                 let silenceStart = null;
                 let isSpeaking = false;
                 
+                // 重置状态
+                userHasSpoken = false;
+                consecutiveSpeakingCount = 0;
+                consecutiveSilenceCount = 0;
+                
                 scriptProcessor.onaudioprocess = function() {
                     analyser.getByteFrequencyData(dataArray);
                     
@@ -764,38 +776,60 @@
                     const dbLevel = volume ? 20 * Math.log10(volume) : -100; // 转换为分贝
                     
                     // 显示音量指示器
-                    console.log(`音量: ${Math.round(dbLevel)} dB`);
+                    console.log(`音量: ${Math.round(dbLevel)} dB, 用户已说话: ${userHasSpoken}`);
                     
                     // 检测是否有声音
                     if (dbLevel > silenceThreshold) {
-                        if (!isSpeaking) {
-                            console.log('检测到说话开始');
-                            isSpeaking = true;
+                        // 如果检测到声音
+                        if (!userHasSpoken) {
+                            // 如果用户尚未被标记为开始说话
+                            consecutiveSpeakingCount++;
+                            console.log(`连续说话计数: ${consecutiveSpeakingCount}/${requiredSpeakingCount}`);
+                            
+                            if (consecutiveSpeakingCount >= requiredSpeakingCount) {
+                                // 当连续多次检测到声音，认为用户开始说话
+                                userHasSpoken = true;
+                                console.log('用户开始说话，启动静音检测');
+                            }
+                        } else {
+                            // 用户已经在说话，重置静音计数
+                            if (!isSpeaking) {
+                                console.log('说话继续中...');
+                                isSpeaking = true;
+                            }
+                            silenceStart = null; // 重置静音计时器
+                            consecutiveSilenceCount = 0; // 重置连续静音计数
                         }
-                        silenceStart = null; // 重置静音计时器
-                        consecutiveSilenceCount = 0; // 重置连续静音计数
                     } else {
                         // 如果检测到静音
-                        consecutiveSilenceCount++; // 增加连续静音计数
-                        console.log(`连续静音计数: ${consecutiveSilenceCount}/${requiredSilenceCount}`);
                         
-                        // 只有连续多次检测到静音才开始计时
-                        if (consecutiveSilenceCount >= requiredSilenceCount) {
-                            if (silenceStart === null) {
-                                silenceStart = Date.now();
-                                console.log('检测到持续静音开始');
-                            } else if (Date.now() - silenceStart > silenceTimeout) {
-                                console.log('检测到静音超过阈值，自动停止录音');
-                                isSpeaking = false;
-                                silenceStart = null;
-                                consecutiveSilenceCount = 0;
-                                
-                                // 如果静音超过阈值，自动停止录音
-                                if (mediaRecorder && mediaRecorder.state === 'recording') {
-                                    console.log('执行自动停止录音');
-                                    mediaRecorder.stop();
+                        // 只有当用户已经开始说话后，才进行静音检测来结束录音
+                        if (userHasSpoken) {
+                            consecutiveSilenceCount++; // 增加连续静音计数
+                            console.log(`连续静音计数: ${consecutiveSilenceCount}/${requiredSilenceCount}`);
+                            
+                            // 只有连续多次检测到静音才开始计时
+                            if (consecutiveSilenceCount >= requiredSilenceCount) {
+                                if (silenceStart === null) {
+                                    silenceStart = Date.now();
+                                    console.log('检测到持续静音开始');
+                                } else if (Date.now() - silenceStart > silenceTimeout) {
+                                    console.log('检测到静音超过阈值，自动停止录音');
+                                    isSpeaking = false;
+                                    silenceStart = null;
+                                    consecutiveSilenceCount = 0;
+                                    userHasSpoken = false;
+                                    
+                                    // 如果静音超过阈值，自动停止录音
+                                    if (mediaRecorder && mediaRecorder.state === 'recording') {
+                                        console.log('执行自动停止录音');
+                                        mediaRecorder.stop();
+                                    }
                                 }
                             }
+                        } else {
+                            // 用户尚未开始说话，重置说话计数
+                            consecutiveSpeakingCount = 0;
                         }
                     }
                 };
