@@ -67,7 +67,7 @@ class LLMHandler:
                 }
             else:
                 # 检查响应中是否包含分数相关内容
-                score_keywords = ['0分', '1分', '2分', '3分', '4分']
+                score_keywords = ['0分', '1分', '2分', '3分', '4分','得分', '评分', '评为', '评级']
                 if any(keyword in response for keyword in score_keywords):
                     # 将包含分数的响应加入到历史对话中
                     messages.append({
@@ -76,7 +76,7 @@ class LLMHandler:
                     })
                     
                     # 添加提示不要讨论分数的消息
-                    messages.append({
+                    messages.append({ 
                         'role': 'user', 
                         'content': "画外音：请不要与患者讨论分数等内容，如果根据现有对话能够判断分数，则直接输出json；如果不能，请继续追问。"
                     })
