@@ -129,7 +129,7 @@ class AssessmentFramework:
                 total_score = sum(score for label, score in self.scores.items() if label != "hamd17")
                 
                 # 如果总分小于等于8分，直接设置hamd17为0分并继续评估
-                if total_score <= 8:
+                if total_score <= 7:
                     self.scores["hamd17"] = 0
                     if "hamd17" not in self.score_history:
                         self.score_history["hamd17"] = []
@@ -172,8 +172,8 @@ class AssessmentFramework:
                 return False
                 
             # 检查是否所有必需的评分项都已完成
-            # 获取所有需要的hamd标签（从hamd1到hamd24）
-            expected_scores = {f"hamd{i}" for i in range(1, 25)}
+            # 获取所有需要的hamd标签（从hamd1到hamd17）
+            expected_scores = {f"hamd{i}" for i in range(1, 17)}
             completed_scores = set(self.scores.keys())
             
             if not expected_scores.issubset(completed_scores):
