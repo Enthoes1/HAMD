@@ -183,18 +183,27 @@ def generate_speech(text, sid):
                     }, room=sid)
                 else:
                     print("语音生成失败")
+                    # 通知前端语音生成失败
+                    socketio.emit('tts_error', {
+                        'message': '语音合成暂时不可用，请阅读文本内容'
+                    }, room=sid)
             except Exception as e:
                 print(f"后台生成语音错误: {str(e)}")
                 import traceback
                 print(traceback.format_exc())
+                # 通知前端语音生成失败
+                socketio.emit('tts_error', {
+                    'message': '语音合成服务出错，请阅读文本内容'
+                }, room=sid)
         
-        # 在后台线程中生成语音
+        # 在后台线程中生成语音，避免阻塞主线程
         socketio.start_background_task(generate_audio)
         
     except Exception as e:
-        print(f"语音生成错误: {str(e)}")
+        print(f"语音生成初始化错误: {str(e)}")
         import traceback
         print(traceback.format_exc())
+        # 不会因为语音生成错误而中断程序流程
 
 @socketio.on('user_input')
 def handle_message(data):
