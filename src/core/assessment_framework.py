@@ -20,6 +20,7 @@ class AssessmentFramework:
         self.conversation_history = {}  # 存储每个条目的对话历史
         self.patient_info = {}  # 存储患者基本信息
         self.insight_item = None  # 存储自知力评估项目
+        self.is_minor = False  # 是否为未成年人标志
         
         # 获取项目根目录
         self.root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -39,10 +40,37 @@ class AssessmentFramework:
         
         # 按数字排序解析提示词
         self.prompt_parser.parse_file(sort_by_number=False)
+
+    def set_patient_info(self, info):
+        """设置患者基本信息"""
+        self.patient_info = info
+        # 检查是否为未成年人
+        if 'age' in info and isinstance(info['age'], (int, float)):
+            self.is_minor = info['age'] < 18
+            if self.is_minor:
+                # 如果是未成年人，自动设置性欲评估为0分
+                self.scores['hamd14'] = 0
+                self.score_history['hamd14'] = [{
+                    'score': 0,
+                    'timestamp': datetime.now().isoformat()
+                }]
+                print("检测到未成年人，已自动设置性欲评估(hamd14)为0分")
         
+        # 在设置患者信息后重新初始化评估项目
+        self.initialize_items_from_prompts()
+
     def initialize_items_from_prompts(self):
         """根据提示词文件初始化评估项目"""
+        # 清空现有项目
+        self.items = []
+        self.conversation_history = {}
+        
         for label, prompt in self.prompt_parser.prompts.items():
+            # 如果是未成年人且是性欲评估项目，跳过
+            if self.is_minor and "hamd14" in prompt:
+                print(f"跳过性欲评估项目: {label}")
+                continue
+                
             item = AssessmentItem(
                 item_id=label,
                 prompt=prompt
@@ -59,6 +87,8 @@ class AssessmentFramework:
             self.conversation_history[self.insight_item.item_id] = []
             self.add_item(self.insight_item)
             
+        print(f"初始化完成，共加载 {len(self.items)} 个评估项目")
+
     def add_item(self, item):
         self.items.append(item)
         
@@ -159,10 +189,6 @@ class AssessmentFramework:
     def get_conversation_history(self, item_id):
         """获取特定条目的对话历史"""
         return self.conversation_history.get(item_id, [])
-        
-    def set_patient_info(self, info):
-        """设置患者基本信息"""
-        self.patient_info = info
         
     def save_assessment_result(self):
         """保存评估结果（仅在评估完全完成时调用）"""
@@ -273,10 +299,25 @@ class AssessmentFramework:
                 
             # 恢复状态
             self.patient_info = progress_data['patient_info']
+            # 检查是否为未成年人
+            if 'age' in self.patient_info and isinstance(self.patient_info['age'], (int, float)):
+                self.is_minor = self.patient_info['age'] < 18
+                if self.is_minor:
+                    # 如果是未成年人，确保性欲评估为0分
+                    self.scores['hamd14'] = 0
+                    self.score_history['hamd14'] = [{
+                        'score': 0,
+                        'timestamp': datetime.now().isoformat()
+                    }]
+                    print("检测到未成年人，已自动设置性欲评估(hamd14)为0分")
+            
             self.current_item_index = progress_data['current_item_index']
             self.scores = progress_data['scores']
             self.score_history = progress_data['score_history']
             self.conversation_history = progress_data['conversation_history']
+            
+            # 重新初始化评估项目
+            self.initialize_items_from_prompts()
             
             print(f"已恢复进度，当前题目: {self.current_item_index + 1}")
             return True

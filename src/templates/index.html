@@ -81,6 +81,7 @@
             -webkit-overflow-scrolling: touch;
             display: flex;
             flex-direction: column;
+            height: calc(100vh - 60px - 220px); /* 减去头部和AI控制区域的高度 */
         }
 
         /* AI控制区域 */
@@ -103,7 +104,6 @@
             padding-bottom: 10px;
             width: 100%;
             flex: 1;
-            overflow-y: auto;
             display: flex;
             flex-direction: column;
         }
@@ -112,6 +112,7 @@
             flex: 1;
             display: flex;
             flex-direction: column;
+            min-height: 0; /* 确保flex布局正确 */
         }
 
         .message {
@@ -519,6 +520,58 @@
         .slider.round:before {
             border-radius: 50%;
         }
+
+        /* 修改录音进度条和计时器样式 */
+        .recording-progress {
+            position: relative;
+            width: 90%;
+            max-width: 250px;
+            height: 4px;
+            background: #f0f0f0;
+            margin: 0 auto;
+            border-radius: 2px;
+            display: none; /* 默认隐藏 */
+        }
+
+        .recording-progress-bar {
+            height: 100%;
+            background: #dc3545; /* 与录音按钮颜色一致 */
+            width: 0%;
+            transition: width 0.1s linear;
+            border-radius: 2px;
+        }
+
+        .recording-timer {
+            position: relative;
+            text-align: center;
+            color: #333;
+            font-size: 14px;
+            margin: 8px auto;
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: none; /* 默认隐藏 */
+        }
+
+        .recording-timer.warning {
+            color: #dc3545; /* 与录音按钮颜色一致 */
+            animation: blink 1s infinite;
+            font-weight: bold;
+        }
+
+        /* 调整录音控件的位置 */
+        .recording-controls {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 5px 0 15px;
+        }
+
+        @keyframes blink {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -563,6 +616,14 @@
                     </div>
                 </div>
                 
+                <!-- 录音进度显示区域 -->
+                <div class="recording-controls">
+                    <div class="recording-progress">
+                        <div class="recording-progress-bar"></div>
+                    </div>
+                    <div class="recording-timer">剩余录音时间: 10秒</div>
+                </div>
+                
                 <!-- 麦克风按钮容器 -->
                 <div class="mic-container">
                     <button id="record-button" onclick="toggleRecording()">
@@ -604,6 +665,12 @@
         let consecutiveSpeakingCount = 0; // 新增：连续检测到说话的次数
         let requiredSpeakingCount = 3; // 新增：需要连续检测到说话的次数才认为用户开始说话
         let preinitializedStream = null; // 预先初始化的麦克风流
+        
+        // 添加录音时间相关变量
+        let recordingStartTime = null;
+        const maxRecordingTime = 10000; // 10秒
+        let recordingTimerInterval = null;
+        let recordingProgressBar = null;
         
         // AI状态更新函数
         function updateAIStatus(status) {
@@ -678,27 +745,50 @@
         function scrollToBottom(smooth = true) {
             const chatArea = document.querySelector('.chat-area');
             if (chatArea) {
-                chatArea.scroll({
-                    top: chatArea.scrollHeight,
-                    behavior: smooth ? 'smooth' : 'auto'
+                // 使用 requestAnimationFrame 确保在DOM更新后执行滚动
+                requestAnimationFrame(() => {
+                    const scrollHeight = chatArea.scrollHeight;
+                    const clientHeight = chatArea.clientHeight;
+                    
+                    // 只有当内容高度大于可视区域高度时才滚动
+                    if (scrollHeight > clientHeight) {
+                        chatArea.scrollTo({
+                            top: scrollHeight - clientHeight,
+                            behavior: smooth ? 'smooth' : 'auto'
+                        });
+                    }
                 });
             }
         }
 
         // 添加自动滚动观察器
-        const autoScrollObserver = new MutationObserver(() => {
-            scrollToBottom();
+        const autoScrollObserver = new MutationObserver((mutations) => {
+            // 检查是否有新的消息添加或内容更新
+            const hasNewMessage = mutations.some(mutation => 
+                (mutation.type === 'childList' && mutation.addedNodes.length > 0) ||
+                (mutation.type === 'characterData' && mutation.target.textContent.trim())
+            );
+            
+            if (hasNewMessage) {
+                scrollToBottom();
+            }
         });
 
         // 开始观察聊天消息容器的变化
         autoScrollObserver.observe(chatMessages, {
             childList: true,
-            subtree: true
+            subtree: true,
+            characterData: true
         });
 
-        // 添加滚动修复，确保新消息可见
-        document.querySelector('.chat-area').addEventListener('DOMNodeInserted', function(event) {
-            scrollToBottom();
+        // 监听窗口大小变化
+        window.addEventListener('resize', () => {
+            scrollToBottom(false);
+        });
+
+        // 监听输入框获得焦点
+        userInput.addEventListener('focus', () => {
+            scrollToBottom(false);
         });
 
         // 从localStorage获取患者信息
@@ -950,7 +1040,11 @@
             messageDiv.className = `message ${role}`;
             messageDiv.textContent = content;
             chatMessages.appendChild(messageDiv);
-            scrollToBottom();
+            
+            // 确保消息添加后立即滚动
+            requestAnimationFrame(() => {
+                scrollToBottom();
+            });
         }
 
         function showTypingIndicator() {
@@ -1013,6 +1107,9 @@
                     // 更新UI
                     const button = document.getElementById('record-button');
                     button.classList.remove('recording');
+                    
+                    // 清理录音进度显示
+                    cleanupRecordingProgress();
                     
                     // 如果有录音数据，则处理
                     if (audioChunks.length > 0) {
@@ -1235,6 +1332,11 @@
             isRecording = true;
             audioChunks = [];
             mediaRecorder.start();
+            
+            // 创建并启动录音进度显示
+            const timer = createRecordingProgress();
+            recordingStartTime = Date.now();
+            recordingTimerInterval = setInterval(() => updateRecordingProgress(timer), 100);
         }
         
         // 停止录音
@@ -1250,6 +1352,9 @@
             if (mediaRecorder && mediaRecorder.state === 'recording') {
                 mediaRecorder.stop();
             }
+            
+            // 清理录音进度显示
+            cleanupRecordingProgress();
         }
 
         // 重写录音按钮点击处理函数
@@ -1366,6 +1471,7 @@
         window.addEventListener('beforeunload', () => {
             stopAudio();
             releaseMediaStream();
+            cleanupRecordingProgress();
             
             // 如果有预初始化的流，也要释放
             if (preinitializedStream) {
@@ -1441,6 +1547,9 @@
                     const button = document.getElementById('record-button');
                     button.classList.remove('recording');
                     
+                    // 清理录音进度显示
+                    cleanupRecordingProgress();
+                    
                     // 如果有录音数据，则处理
                     if (audioChunks.length > 0) {
                         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
@@ -1490,6 +1599,11 @@
                 audioChunks = [];
                 mediaRecorder.start();
                 
+                // 创建并启动录音进度显示
+                const timer = createRecordingProgress();
+                recordingStartTime = Date.now();
+                recordingTimerInterval = setInterval(() => updateRecordingProgress(timer), 100);
+                
                 return true;
             } catch (err) {
                 console.error('使用预初始化流开始录音错误:', err);
@@ -1500,6 +1614,62 @@
                 }
                 
                 return false;
+            }
+        }
+
+        // 创建录音进度条
+        function createRecordingProgress() {
+            const progress = document.querySelector('.recording-progress');
+            const timer = document.querySelector('.recording-timer');
+            
+            // 显示进度条和计时器
+            progress.style.display = 'block';
+            timer.style.display = 'block';
+            
+            // 重置进度条初始状态
+            recordingProgressBar = progress.querySelector('.recording-progress-bar');
+            recordingProgressBar.style.width = '0%';
+            timer.textContent = '剩余录音时间: 10秒';
+            timer.classList.remove('warning');
+            
+            return timer;
+        }
+
+        // 更新录音进度
+        function updateRecordingProgress(timer) {
+            const now = Date.now();
+            const elapsed = now - recordingStartTime;
+            const remaining = Math.max(0, maxRecordingTime - elapsed);
+            const progress = (elapsed / maxRecordingTime) * 100;
+            
+            recordingProgressBar.style.width = `${progress}%`;
+            timer.textContent = `剩余录音时间: ${Math.ceil(remaining / 1000)}秒`;
+            
+            // 最后3秒显示警告
+            if (remaining <= 3000) {
+                timer.classList.add('warning');
+            }
+            
+            // 时间到自动停止
+            if (remaining <= 0) {
+                stopRecording();
+            }
+        }
+
+        // 清理录音进度显示
+        function cleanupRecordingProgress() {
+            const progress = document.querySelector('.recording-progress');
+            const timer = document.querySelector('.recording-timer');
+            
+            if (progress) progress.style.display = 'none';
+            if (timer) {
+                timer.style.display = 'none';
+                timer.classList.remove('warning');
+            }
+            
+            if (recordingTimerInterval) {
+                clearInterval(recordingTimerInterval);
+                recordingTimerInterval = null;
             }
         }
     </script>
