@@ -1108,6 +1108,9 @@
                     const button = document.getElementById('record-button');
                     button.classList.remove('recording');
                     
+                    // 立即更新AI状态为思考中
+                    updateAIStatus('thinking');
+                    
                     // 清理录音进度显示
                     cleanupRecordingProgress();
                     
@@ -1143,6 +1146,9 @@
                     silenceTimer = setTimeout(() => {
                         console.log('录音时间过长，自动停止');
                         if (mediaRecorder && mediaRecorder.state === 'recording') {
+                            console.log('执行自动停止录音');
+                            // 先更新AI状态再停止录音，确保状态立即变化
+                            updateAIStatus('thinking');
                             mediaRecorder.stop();
                         }
                     }, 60000); // 60秒最大录音时间
@@ -1263,6 +1269,8 @@
                                     // 如果静音超过阈值，自动停止录音
                                     if (mediaRecorder && mediaRecorder.state === 'recording') {
                                         console.log('执行自动停止录音');
+                                        // 先更新AI状态再停止录音，确保状态立即变化
+                                        updateAIStatus('thinking');
                                         mediaRecorder.stop();
                                     }
                                 }
@@ -1347,7 +1355,8 @@
             }
             
             console.log('停止录音');
-            updateAIStatus('thinking');
+            // 不再在这里更新AI状态，因为已经在onstop处理程序中更新
+            // updateAIStatus('thinking');
             
             if (mediaRecorder && mediaRecorder.state === 'recording') {
                 mediaRecorder.stop();
@@ -1547,6 +1556,9 @@
                     const button = document.getElementById('record-button');
                     button.classList.remove('recording');
                     
+                    // 立即更新AI状态为思考中
+                    updateAIStatus('thinking');
+                    
                     // 清理录音进度显示
                     cleanupRecordingProgress();
                     
@@ -1582,6 +1594,9 @@
                     silenceTimer = setTimeout(() => {
                         console.log('录音时间过长，自动停止');
                         if (mediaRecorder && mediaRecorder.state === 'recording') {
+                            console.log('执行自动停止录音');
+                            // 先更新AI状态再停止录音，确保状态立即变化
+                            updateAIStatus('thinking');
                             mediaRecorder.stop();
                         }
                     }, 60000); // 60秒最大录音时间
