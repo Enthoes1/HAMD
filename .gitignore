@@ -56,5 +56,6 @@ recordings/
 # Progress files
 progress/
 *.json
+newprompt.txt
 未来优化方向.txt
 文本整理.txt
